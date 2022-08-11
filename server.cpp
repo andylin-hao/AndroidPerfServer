@@ -22,6 +22,8 @@
 #include <android-base/unique_fd.h>
 #include <android-base/stringprintf.h>
 #include <cutils/sockets.h>
+#include <utils/String8.h>
+#include <utils/String16.h>
 
 #include <chrono>
 #include <thread>
@@ -145,7 +147,7 @@ int AndroidPerf::main() {
                     data += String8(buf);
                 }
 
-                ALOGD("data received: %s", data.c_str());
+                ALOGD("data received: %s", data.string());
                 handleData(events[i].data.fd, data);
             }
         }
@@ -199,7 +201,7 @@ void AndroidPerf::handleData(int fd, String8 data) {
         dumpLayerListData(remote_end.get());
         while(splice(local_end.get(), NULL, fd, NULL, SEND_SIZE, SPLICE_F_MORE|SPLICE_F_NONBLOCK) == SEND_SIZE){}
     } else if (data.contains("latency")) {
-        dumpLayerLatency(remote_end.get(), String16(data.c_str() + strlen("latency") + 1));
+        dumpLayerLatency(remote_end.get(), String16(data.string() + strlen("latency") + 1));
         while(splice(local_end.get(), NULL, fd, NULL, SEND_SIZE, SPLICE_F_MORE|SPLICE_F_NONBLOCK) == SEND_SIZE){}
     } else if (data.contains("PING")) {
         writeMSG(fd, "OKAY");
