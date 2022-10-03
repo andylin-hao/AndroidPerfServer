@@ -21,7 +21,9 @@ public:
     
     void dumpLayerListData(int fd);
     void dumpLayerLatency(int fd, String16 layerName);
-    void writeMSG(int fd, const char *data);
+    void dumpNetworkStats(int fd, int uid);
+    
+    void writeMSG(int fd, const void *data, size_t size);
     int  createSocket();
     void handleData(int fd, String8 data);
     void appendPadding(int fd, nsecs_t time);

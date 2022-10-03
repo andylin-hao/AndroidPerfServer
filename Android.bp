@@ -1,27 +1,6 @@
-cc_binary {
+java_binary {
     name: "AndroidPerfServer",
-
-    srcs: [
-        "main.cpp",
-        "server.cpp",
-    ],
-
-    shared_libs: [
-        "libbase",
-        "libutils",
-        "liblog",
-        "libbinder",
-        "libcutils",
-    ],
-
-    compile_multilib: "both",
-    multilib: {
-        lib32: {
-            stem: "AndroidPerfServer32",
-        },
-        lib64: {
-            stem: "AndroidPerfServer64",
-        },
-    },
-
+    wrapper: "AndroidPerfServer",
+    srcs: ["**/*.java"],
+    required: ["libperfserver_jni"],
 }

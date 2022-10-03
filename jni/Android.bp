@@ -1,0 +1,20 @@
+cc_library_shared {
+    name: "libperfserver_jni",
+
+    srcs: [
+        "com_androidperf_server_PerfServer.cpp",
+        "server.cpp",
+    ],
+
+    shared_libs: [
+        "libbase",
+        "libutils",
+        "liblog",
+        "libbinder",
+        "libcutils",
+        "libprocessgroup",
+        "libbpf_android",
+        "libnetdbpf",
+        "libnetdutils"
+    ],
+}

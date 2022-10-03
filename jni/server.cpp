@@ -1,4 +1,4 @@
-#define LOG_TAG "androidperf"
+#define LOG_TAG "AndroidPerf"
 
 #include "server.h"
 
@@ -14,6 +14,7 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/un.h>
+#include <sys/sendfile.h>
 #include <unistd.h>
 #include <netinet/in.h>
 #include <inttypes.h>
@@ -25,6 +26,9 @@
 #include <utils/String8.h>
 #include <utils/String16.h>
 
+#include "bpf/BpfUtils.h"
+#include "netdbpf/BpfNetworkStats.h"
+
 #include <chrono>
 #include <thread>
 
@@ -32,6 +36,9 @@ using namespace android;
 
 using ::android::base::unique_fd;
 using ::android::base::WriteFully;
+
+using android::bpf::Stats;
+using android::bpf::bpfGetUidStats;
 
 #define MAX_EVENTS 64
 #define SEND_SIZE 1024
@@ -176,6 +183,26 @@ void AndroidPerf::dumpLayerLatency(int fd, String16 layerName) {
     write(fd, MSG_END, sizeof(MSG_END) - 1);
 }
 
+void AndroidPerf::dumpNetworkStats(int fd, int uid) {
+    ALOGD("Dumping %d", uid);
+    if (FILE *file = fopen("/proc/net/xt_qtaguid/stats", "r")) {
+        int stats_fd = fileno(file);
+        if (sendfile(fd, stats_fd, NULL, 0x7ffff000) < 0) 
+            ALOGE("failed to send network stats file with xt_qtaguid");
+        fclose(file);
+    } else {
+        // use eBPF instead
+        struct Stats stats;
+        memset(&stats, 0, sizeof(Stats));
+        if (bpfGetUidStats(uid, &stats) == 0) {
+            ALOGD("Get BPF %lld", (long long) stats.rxBytes);
+        } else {
+            ALOGE("failed to get bpf stats");
+        }
+        writeMSG(fd, &stats, sizeof(stats));
+    }
+}
+
 int AndroidPerf::createSocket() {
     int socketFd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (socket_local_server_bind(socketFd, LOCAL_SOCKET, ANDROID_SOCKET_NAMESPACE_ABSTRACT) < 0) {
@@ -203,13 +230,15 @@ void AndroidPerf::handleData(int fd, String8 data) {
     } else if (data.contains("latency")) {
         dumpLayerLatency(remote_end.get(), String16(data.string() + strlen("latency") + 1));
         while(splice(local_end.get(), NULL, fd, NULL, SEND_SIZE, SPLICE_F_MORE|SPLICE_F_NONBLOCK) == SEND_SIZE){}
+    } else if (data.contains("network")) {
+        dumpNetworkStats(fd, atoi(data.string() + strlen("network") + 1));
     } else if (data.contains("PING")) {
-        writeMSG(fd, "OKAY");
+        writeMSG(fd, "OKAY", 4);
     }
 }
 
-void AndroidPerf::writeMSG(int fd, const char *data) {
-    write(fd, data, strlen(data));
+void AndroidPerf::writeMSG(int fd, const void *data, size_t size) {
+    write(fd, data, size);
     write(fd, MSG_END, sizeof(MSG_END) - 1);
 }
 
