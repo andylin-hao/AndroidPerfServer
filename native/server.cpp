@@ -26,9 +26,6 @@
 #include <utils/String8.h>
 #include <utils/String16.h>
 
-#include "bpf/BpfUtils.h"
-#include "netdbpf/BpfNetworkStats.h"
-
 #include <chrono>
 #include <thread>
 
@@ -36,9 +33,6 @@ using namespace android;
 
 using ::android::base::unique_fd;
 using ::android::base::WriteFully;
-
-using android::bpf::Stats;
-using android::bpf::bpfGetUidStats;
 
 #define MAX_EVENTS 64
 #define SEND_SIZE 1024
@@ -66,6 +60,7 @@ static int nonBlockingSocket(int sfd) {
 int AndroidPerf::main() {
     struct epoll_event event;
     struct epoll_event *events;
+    testServer();
     int socketFd;
     if ((socketFd = createSocket()) < 0) {
         ALOGE("create socket failed");
@@ -190,16 +185,6 @@ void AndroidPerf::dumpNetworkStats(int fd, int uid) {
         if (sendfile(fd, stats_fd, NULL, 0x7ffff000) < 0) 
             ALOGE("failed to send network stats file with xt_qtaguid");
         fclose(file);
-    } else {
-        // use eBPF instead
-        struct Stats stats;
-        memset(&stats, 0, sizeof(Stats));
-        if (bpfGetUidStats(uid, &stats) == 0) {
-            ALOGD("Get BPF %lld", (long long) stats.rxBytes);
-        } else {
-            ALOGE("failed to get bpf stats");
-        }
-        writeMSG(fd, &stats, sizeof(stats));
     }
 }
 
@@ -246,4 +231,37 @@ void AndroidPerf::appendPadding(int fd, nsecs_t time) {
     std::string padding;
     base::StringAppendF(&padding, "%s" "\t%" PRId64 "\n", PADDING, time);
     write(fd, padding.c_str(), padding.size());
+}
+
+void AndroidPerf::testServer() {
+    int result;
+    int count = 1;
+
+    char *buffer = (char *) malloc(8);
+
+    int i;
+    for(i = 0; i<8; i++){
+        buffer[i] = (i+1);
+    }
+
+    ALOGD("Begin");
+
+    int fd = socket_local_client(SERVER_SOCKET, ANDROID_SOCKET_NAMESPACE_ABSTRACT, SOCK_STREAM);
+
+    ALOGD("End");
+
+    if (fd > 0) {
+        ALOGD("In clientSocketThreadNative() : Connecting to Java LocalSocketServer succeed");
+        while(true){
+            result = write(fd, buffer, 8);
+            ALOGD("In clientSocketThreadNative() : Total write = %d", result);
+            count++;
+            if(4 == count){
+                break;
+            } 
+        }
+        close(fd);
+    } else {
+        ALOGD("Failed to connect");
+    }
 }

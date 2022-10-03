@@ -10,6 +10,7 @@
 namespace android {
 
 #define LOCAL_SOCKET "androidperf"
+#define SERVER_SOCKET "AndroidPerfServer"
 
 class AndroidPerf {
 public:
@@ -27,6 +28,7 @@ public:
     int  createSocket();
     void handleData(int fd, String8 data);
     void appendPadding(int fd, nsecs_t time);
+    void testServer();
 
 
 private:

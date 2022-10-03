@@ -30,7 +30,7 @@
 
 using namespace android;
 
-int server_main() {
+int main() {
     daemon(1, 0);
     signal(SIGPIPE, SIG_IGN);
     sp<IServiceManager> sm = defaultServiceManager();

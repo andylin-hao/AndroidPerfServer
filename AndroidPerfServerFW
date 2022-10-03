@@ -4,8 +4,7 @@
 # checks in the Java classloader, which prohibit dependencies that aren't
 # listed in system/core/rootdir/etc/public.libraries.android.txt.
 base=/data/local/tmp
-export LD_PRELOAD=$base/libperfserver_jni.so
 
 mkdir /data/local/tmp/dalvik-cache
 trap "" HUP
-ANDROID_DATA=$base app_process -Djava.class.path=$base/AndroidPerfServer.dex $base com.androidperf.server.AndroidPerfServer "$@"
+ANDROID_DATA=$base app_process -Djava.class.path=$base/AndroidPerfServerFW.jar $base com.androidperf.server.AndroidPerfServerFW "$@"
