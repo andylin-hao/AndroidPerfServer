@@ -8,59 +8,70 @@ import android.net.LocalSocket;
 import android.net.LocalSocketAddress;
 import android.app.usage.NetworkStats;
 import android.app.usage.NetworkStatsManager;
+import android.util.Log;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 
 public class AndroidPerfServerFW extends Thread {
+    private static final String TAG = "AndroidPerfFW";
+    private static final String MSG_END = "PERF_MSG_END\n";
+
     public static String SOCKET_ADDRESS = "AndroidPerfServer";
     NetworkStatsManager networkStatsManager = null;
 
     private Context systemContext = null;
-    int bufferSize = 32;
-    byte[] buffer;
-    int bytesRead;
-    int totalBytesRead;
-    int posOffset;
-    LocalServerSocket server;
-    LocalSocket receiver;
-    InputStream input;
 
     public static void main(String[] args) {
         AndroidPerfServerFW server = new AndroidPerfServerFW();
         Looper.prepareMainLooper();
         server.systemContext = ActivityThread.systemMain().getSystemContext();
         server.networkStatsManager = (NetworkStatsManager) server.systemContext.getSystemService("netstats");
-        System.out.println(server.networkStatsManager);
+
+        server.start();
+        Looper.loop();
+    }
+
+    private void handleData(OutputStream outputStream, String data) {
+        if (data.contains("network ")) {
+            int uid = Integer.parseInt(data.split(" ")[1]);
+            dumpNetworkStats(outputStream, uid);
+        }
+    }
+
+    private void dumpNetworkStats(OutputStream outputStream, int uid) {
+
+    }
+
+    @Override
+    public void run() {
         try {
             NetworkStats.Bucket bucket = new NetworkStats.Bucket();
-            server.networkStatsManager.setPollForce(true);
-            NetworkStats querySummary = server.networkStatsManager.querySummary(1, (String) null, Long.MIN_VALUE, Long.MAX_VALUE);
+            networkStatsManager.setPollForce(true);
+            NetworkStats querySummary = networkStatsManager.querySummary(1, (String) null, Long.MIN_VALUE, Long.MAX_VALUE);
             querySummary.close();
-            server.networkStatsManager.setPollForce(false);
+            networkStatsManager.setPollForce(false);
             while (querySummary.getNextBucket(bucket)) {
                 System.out.println(bucket.getUid() + " Bytes: " + bucket.getRxBytes());
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
-
-        server.start();
-    }
-
-    @Override
-    public void run() {
-
-        buffer = new byte[bufferSize];
-        bytesRead = 0;
-        totalBytesRead = 0;
-        posOffset = 0;
+        byte[] buffer = new byte[1024];
+        StringBuilder reply = new StringBuilder();
+        int msgEnd;
+        InputStream input;
+        int len;
+        LocalServerSocket server;
+        LocalSocket receiver;
 
         try {
             server = new LocalServerSocket(SOCKET_ADDRESS);
         } catch (IOException e) {
-            System.out.println("The localSocketServer created failed !!!");
+            Log.e(TAG, "failed to create server");
             e.printStackTrace();
+            return;
         }
 
         LocalSocketAddress localSocketAddress; 
@@ -68,52 +79,40 @@ public class AndroidPerfServerFW extends Thread {
         String str = localSocketAddress.getName();
 
         while (true) {
-
             if (null == server){
-                System.out.println("The localSocketServer is NULL !!!");
+                Log.e(TAG, "server is null");
                 break;
             }
 
             try {
-                System.out.println("localSocketServer begins to accept()");
                 receiver = server.accept();
             } catch (IOException e) {
-                e.printStackTrace();
+                Log.e(TAG, e.toString());
                 continue;
             }                   
 
             try {
                 input = receiver.getInputStream();
             } catch (IOException e) {
-                e.printStackTrace();
+                Log.e(TAG, e.toString());
                 continue;
             }
 
-            System.out.println("The client connect to LocalServerSocket");
+            Log.d(TAG, "client connected");
 
             while (receiver != null) {
-
                 try {
-                    bytesRead = input.read(buffer, posOffset,
-                            (bufferSize - totalBytesRead));
+                    len = input.read(buffer);
+                    if (len > 0) {
+                        reply.append(new String(buffer, 0, len));
+                    }
+                    if (len <= 0) {
+                        String replyStr = reply.toString();
+                    }
                 } catch (IOException e) {
-                    e.printStackTrace();
+                    Log.e(TAG, e.toString());
                     break;
                 }
-
-                if (bytesRead >= 0) {
-                    System.out.println("Receive data from socket, bytesRead = "
-                            + bytesRead);
-                    posOffset += bytesRead;
-                    totalBytesRead += bytesRead;
-                }
-
-                String msg = new String(buffer);
-                System.out.println("The context of buffer is : " + msg);
-
-                bytesRead = 0;
-                totalBytesRead = 0;
-                posOffset = 0;
             }
         }
     }
