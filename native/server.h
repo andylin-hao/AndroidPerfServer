@@ -22,13 +22,14 @@ public:
     
     void dumpLayerListData(int fd);
     void dumpLayerLatency(int fd, String16 layerName);
-    void dumpNetworkStats(int fd, int uid);
+    void dumpNetworkStats(int fd, String8 data);
     
     void writeMSG(int fd, const void *data, size_t size);
+    void readMSG(int fd, String8 *data);
     int  createSocket();
     void handleData(int fd, String8 data);
     void appendPadding(int fd, nsecs_t time);
-    void testServer();
+    void requestFramework(const void * data, size_t size, int outFd);
 
 
 private:

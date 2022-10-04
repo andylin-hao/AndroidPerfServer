@@ -13,6 +13,7 @@ import android.util.Log;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.ByteBuffer;
 
 public class AndroidPerfServerFW extends Thread {
     private static final String TAG = "AndroidPerfFW";
@@ -35,37 +36,71 @@ public class AndroidPerfServerFW extends Thread {
 
     private void handleData(OutputStream outputStream, String data) {
         if (data.contains("network ")) {
+            Log.d(TAG, "Network stats");
             int uid = Integer.parseInt(data.split(" ")[1]);
             dumpNetworkStats(outputStream, uid);
+        } else if (data.contains("PING")) {
+            writeMSG(outputStream, "OKAY".getBytes());
         }
     }
 
     private void dumpNetworkStats(OutputStream outputStream, int uid) {
+        try {
+            NetStatsData mobileStats = new NetStatsData();
+            NetStatsData wifiStats = new NetStatsData();
+            NetworkStats.Bucket bucket = new NetworkStats.Bucket();
 
+            networkStatsManager.setPollForce(true);
+            NetworkStats querySummaryWiFi = networkStatsManager.querySummary(1, (String) null, Long.MIN_VALUE, Long.MAX_VALUE);
+            querySummaryWiFi.close();
+            networkStatsManager.setPollForce(false);
+
+            NetworkStats querySummaryMobile = networkStatsManager.querySummary(0, (String) null, Long.MIN_VALUE, Long.MAX_VALUE);
+            querySummaryMobile.close();
+
+            while (querySummaryWiFi.getNextBucket(bucket)) {
+                if (uid == bucket.getUid() && bucket.getTag() == 0) {
+                    wifiStats.mRxBytes += bucket.getRxBytes();
+                    wifiStats.mRxPackets += bucket.getRxPackets();
+                    wifiStats.mTxBytes += bucket.getTxBytes();
+                    wifiStats.mTxPackets += bucket.getTxPackets();
+                }
+            }
+            while (querySummaryMobile.getNextBucket(bucket)) {
+                if (uid == bucket.getUid() && bucket.getTag() == 0) {
+                    mobileStats.mRxBytes += bucket.getRxBytes();
+                    mobileStats.mRxPackets += bucket.getRxPackets();
+                    mobileStats.mTxBytes += bucket.getTxBytes();
+                    mobileStats.mTxPackets += bucket.getTxPackets();
+                }
+            }
+
+            outputStream.write(wifiStats.toBytes());
+            outputStream.write(mobileStats.toBytes());
+            outputStream.write(MSG_END.getBytes());
+        } catch (Exception e) {
+            Log.d(TAG, e.toString());
+        }
+    }
+
+    private void writeMSG(OutputStream outputStream, byte[] data) {
+        try {
+            outputStream.write(data);
+            outputStream.write(MSG_END.getBytes());
+        } catch (Exception e) {
+            Log.d(TAG, e.toString());
+        }
     }
 
     @Override
     public void run() {
-        try {
-            NetworkStats.Bucket bucket = new NetworkStats.Bucket();
-            networkStatsManager.setPollForce(true);
-            NetworkStats querySummary = networkStatsManager.querySummary(1, (String) null, Long.MIN_VALUE, Long.MAX_VALUE);
-            querySummary.close();
-            networkStatsManager.setPollForce(false);
-            while (querySummary.getNextBucket(bucket)) {
-                System.out.println(bucket.getUid() + " Bytes: " + bucket.getRxBytes());
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
         byte[] buffer = new byte[1024];
-        StringBuilder reply = new StringBuilder();
+        StringBuilder msg = new StringBuilder();
         int msgEnd;
         InputStream input;
         int len;
         LocalServerSocket server;
         LocalSocket receiver;
-
         try {
             server = new LocalServerSocket(SOCKET_ADDRESS);
         } catch (IOException e) {
@@ -100,20 +135,40 @@ public class AndroidPerfServerFW extends Thread {
 
             Log.d(TAG, "client connected");
 
-            while (receiver != null) {
+            while (receiver != null && receiver.isConnected()) {
                 try {
                     len = input.read(buffer);
                     if (len > 0) {
-                        reply.append(new String(buffer, 0, len));
+                        msg.append(new String(buffer, 0, len));
+                        Log.d(TAG, "client msg: " + msg.toString());
                     }
-                    if (len <= 0) {
-                        String replyStr = reply.toString();
+                    if (len < 1024) {
+                        String msgStr = msg.toString();
+                        Log.d(TAG, "receive client msg: " + msgStr);
+                        handleData(receiver.getOutputStream(), msgStr);
+                        break;
                     }
                 } catch (IOException e) {
                     Log.e(TAG, e.toString());
                     break;
                 }
             }
+        }
+    }
+
+    class NetStatsData {
+        public long mRxBytes = 0;
+        public long mRxPackets = 0;
+        public long mTxBytes = 0;
+        public long mTxPackets = 0;
+
+        public byte[] toBytes() {
+            ByteBuffer buffer = ByteBuffer.allocate(32);
+            buffer.putLong(0, mRxBytes);
+            buffer.putLong(8, mRxPackets);
+            buffer.putLong(16, mTxBytes);
+            buffer.putLong(24, mTxPackets);
+            return buffer.array();
         }
     }
 }

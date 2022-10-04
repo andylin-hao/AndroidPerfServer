@@ -60,7 +60,6 @@ static int nonBlockingSocket(int sfd) {
 int AndroidPerf::main() {
     struct epoll_event event;
     struct epoll_event *events;
-    testServer();
     int socketFd;
     if ((socketFd = createSocket()) < 0) {
         ALOGE("create socket failed");
@@ -132,22 +131,7 @@ int AndroidPerf::main() {
                 continue;
             } else {
                 String8 data;
-
-                while (1) {
-                    ssize_t count;
-                    char buf[512] = {0};
-
-                    count = TEMP_FAILURE_RETRY(read(events[i].data.fd, buf, sizeof buf));
-                    if (count == -1) {
-                        if (errno != EAGAIN) {
-                            ALOGE("read failed");
-                        }
-                        break;
-                    } else if (count == 0) {
-                        break;
-                    }
-                    data += String8(buf);
-                }
+                readMSG(events[i].data.fd, &data);
 
                 ALOGD("data received: %s", data.string());
                 handleData(events[i].data.fd, data);
@@ -178,13 +162,16 @@ void AndroidPerf::dumpLayerLatency(int fd, String16 layerName) {
     write(fd, MSG_END, sizeof(MSG_END) - 1);
 }
 
-void AndroidPerf::dumpNetworkStats(int fd, int uid) {
-    ALOGD("Dumping %d", uid);
+void AndroidPerf::dumpNetworkStats(int fd, String8 data) {
     if (FILE *file = fopen("/proc/net/xt_qtaguid/stats", "r")) {
         int stats_fd = fileno(file);
         if (sendfile(fd, stats_fd, NULL, 0x7ffff000) < 0) 
             ALOGE("failed to send network stats file with xt_qtaguid");
         fclose(file);
+    } else {
+        String8 reply;
+        ALOGD("PerfTest: Begin");
+        requestFramework(data.string(), data.size(), fd);
     }
 }
 
@@ -216,7 +203,7 @@ void AndroidPerf::handleData(int fd, String8 data) {
         dumpLayerLatency(remote_end.get(), String16(data.string() + strlen("latency") + 1));
         while(splice(local_end.get(), NULL, fd, NULL, SEND_SIZE, SPLICE_F_MORE|SPLICE_F_NONBLOCK) == SEND_SIZE){}
     } else if (data.contains("network")) {
-        dumpNetworkStats(fd, atoi(data.string() + strlen("network") + 1));
+        dumpNetworkStats(fd, data);
     } else if (data.contains("PING")) {
         writeMSG(fd, "OKAY", 4);
     }
@@ -227,41 +214,56 @@ void AndroidPerf::writeMSG(int fd, const void *data, size_t size) {
     write(fd, MSG_END, sizeof(MSG_END) - 1);
 }
 
+void AndroidPerf::readMSG(int fd, String8 *data) {
+    while (1) {
+        ssize_t count;
+        char buf[512] = {0};
+
+        count = TEMP_FAILURE_RETRY(read(fd, buf, sizeof buf));
+        if (count == -1) {
+            if (errno != EAGAIN) {
+                ALOGE("read failed");
+            }
+            break;
+        } else if (count == 0) {
+            break;
+        }
+        *data += String8(buf);
+    }
+}
+
 void AndroidPerf::appendPadding(int fd, nsecs_t time) {
     std::string padding;
     base::StringAppendF(&padding, "%s" "\t%" PRId64 "\n", PADDING, time);
     write(fd, padding.c_str(), padding.size());
 }
 
-void AndroidPerf::testServer() {
-    int result;
-    int count = 1;
-
-    char *buffer = (char *) malloc(8);
-
-    int i;
-    for(i = 0; i<8; i++){
-        buffer[i] = (i+1);
-    }
-
-    ALOGD("Begin");
-
+void AndroidPerf::requestFramework(const void * data, size_t size, int outFd) {
     int fd = socket_local_client(SERVER_SOCKET, ANDROID_SOCKET_NAMESPACE_ABSTRACT, SOCK_STREAM);
 
-    ALOGD("End");
-
     if (fd > 0) {
-        ALOGD("In clientSocketThreadNative() : Connecting to Java LocalSocketServer succeed");
-        while(true){
-            result = write(fd, buffer, 8);
-            ALOGD("In clientSocketThreadNative() : Total write = %d", result);
-            count++;
-            if(4 == count){
+        ALOGD("PerfTest: connected to fw, size %ld", (long) size);
+        TEMP_FAILURE_RETRY(write(fd, data, size));
+        while (1) {
+            ssize_t count;
+            char buf[512] = {0};
+
+            count = TEMP_FAILURE_RETRY(read(fd, buf, sizeof buf));
+            if (count == -1) {
+                if (errno != EAGAIN) {
+                    ALOGE("PerfTest: read failed");
+                }
                 break;
             } 
+            ALOGD("PerfTest: Reply size 1 %ld, content %s", (long) count, buf);
+            write(outFd, buf, count);
+            ALOGD("PerfTest: Reply size %ld, content %s", (long) count, buf);
+            if (count < 512) {
+                break;
+            }
         }
         close(fd);
     } else {
-        ALOGD("Failed to connect");
+        ALOGD("PerfTest: failed to connect fw");
     }
 }
