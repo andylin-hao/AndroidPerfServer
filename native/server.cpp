@@ -33,6 +33,7 @@ using namespace android;
 
 using ::android::base::unique_fd;
 using ::android::base::WriteFully;
+using ::android::SharedBuffer;
 
 #define MAX_EVENTS 64
 #define SEND_SIZE 1024
@@ -71,7 +72,7 @@ int AndroidPerf::main() {
         exit(EXIT_FAILURE);
     }
 
-    int epollFd = epoll_create1(0);
+    epollFd = epoll_create1(0);
     if (epollFd == -1) {
         ALOGE("epoll_create failed");
         close(socketFd);
@@ -115,30 +116,25 @@ int AndroidPerf::main() {
                         }
                     }
 
-                    ALOGD("connection accepted!");
-                    if (nonBlockingSocket(clientFd) < 0) {
-                        ALOGE("failed to make client socket nonblocking");
-                        break;
-                    }
-
-                    event.data.fd = clientFd;
-                    event.events = EPOLLIN | EPOLLET;
-                    if (epoll_ctl(epollFd, EPOLL_CTL_ADD, clientFd, &event) == -1) {
-                        ALOGE("epoll_ctl failed");
+                    if (addEpollFd(clientFd) < 0) {
+                        ALOGE("failed to add client fd to epoll");
                         break;
                     }
                 }
                 continue;
             } else {
-                String8 data;
-                readMSG(events[i].data.fd, &data);
-
-                ALOGD("data received: %s", data.string());
-                handleData(events[i].data.fd, data);
+                ssize_t count;
+                SharedBuffer *res = readMSG(events[i].data.fd, &count);                
+                if (count > sizeof(MSG_END) - 1) {
+                    String8 data((const char *) res->data(), count - sizeof(MSG_END) + 1);
+                    ALOGD("data received: %s", data.string());
+                    handleData(events[i].data.fd, data);
+                }
+                SharedBuffer::dealloc(res);
             }
         }
     }
-
+    
     free(events);
     close(socketFd);
 
@@ -204,6 +200,8 @@ void AndroidPerf::handleData(int fd, String8 data) {
         while(splice(local_end.get(), NULL, fd, NULL, SEND_SIZE, SPLICE_F_MORE|SPLICE_F_NONBLOCK) == SEND_SIZE){}
     } else if (data.contains("network")) {
         dumpNetworkStats(fd, data);
+    } else if (data.contains("PING_FW")) {
+        requestFramework(data.string(), data.size(), fd);
     } else if (data.contains("PING")) {
         writeMSG(fd, "OKAY", 4);
     }
@@ -214,22 +212,37 @@ void AndroidPerf::writeMSG(int fd, const void *data, size_t size) {
     write(fd, MSG_END, sizeof(MSG_END) - 1);
 }
 
-void AndroidPerf::readMSG(int fd, String8 *data) {
+SharedBuffer* AndroidPerf::readMSG(int fd, ssize_t *count) {
+    SharedBuffer* buf = SharedBuffer::alloc(512);
+    *count = 0;
     while (1) {
-        ssize_t count;
-        char buf[512] = {0};
-
-        count = TEMP_FAILURE_RETRY(read(fd, buf, sizeof buf));
-        if (count == -1) {
+        char *data = (char *) buf->data();
+        int len = TEMP_FAILURE_RETRY(read(fd, data + *count, 512));
+        if (len < 0) {
             if (errno != EAGAIN) {
                 ALOGE("read failed");
             }
             break;
-        } else if (count == 0) {
-            break;
-        }
-        *data += String8(buf);
+        } else {
+            if (len == 0) {
+                break;
+            }
+            *count += len;
+            if (*count > sizeof(MSG_END) - 1) {
+                const char *bufData = (const char *) buf->data();
+                bufData += (*count - sizeof(MSG_END) + 1);
+                String8 bufStr(bufData, sizeof(MSG_END) - 1);
+                if (bufStr.contains(MSG_END)) {
+                    break;
+                }
+            }
+            
+            if (*count > buf->size() - 512) {
+                buf->editResize(buf->size() + 512);
+            }
+        } 
     }
+    return buf;
 }
 
 void AndroidPerf::appendPadding(int fd, nsecs_t time) {
@@ -238,31 +251,31 @@ void AndroidPerf::appendPadding(int fd, nsecs_t time) {
     write(fd, padding.c_str(), padding.size());
 }
 
+int AndroidPerf::addEpollFd(int fd) {
+    struct epoll_event event;
+    if (nonBlockingSocket(fd) < 0) {
+        ALOGE("failed to make socket nonblocking");
+        return -1;
+    }
+
+    event.data.fd = fd;
+    event.events = EPOLLIN | EPOLLET;
+    if (epoll_ctl(epollFd, EPOLL_CTL_ADD, fd, &event) == -1) {
+        ALOGE("epoll_ctl failed");
+        return -1;
+    }
+
+    return 0;
+}
+
 void AndroidPerf::requestFramework(const void * data, size_t size, int outFd) {
-    int fd = socket_local_client(SERVER_SOCKET, ANDROID_SOCKET_NAMESPACE_ABSTRACT, SOCK_STREAM);
+    int fwFd = socket_local_client(FW_SOCKET, ANDROID_SOCKET_NAMESPACE_ABSTRACT, SOCK_STREAM);
 
-    if (fd > 0) {
-        ALOGD("PerfTest: connected to fw, size %ld", (long) size);
-        TEMP_FAILURE_RETRY(write(fd, data, size));
-        while (1) {
-            ssize_t count;
-            char buf[512] = {0};
-
-            count = TEMP_FAILURE_RETRY(read(fd, buf, sizeof buf));
-            if (count == -1) {
-                if (errno != EAGAIN) {
-                    ALOGE("PerfTest: read failed");
-                }
-                break;
-            } 
-            ALOGD("PerfTest: Reply size 1 %ld, content %s", (long) count, buf);
-            write(outFd, buf, count);
-            ALOGD("PerfTest: Reply size %ld, content %s", (long) count, buf);
-            if (count < 512) {
-                break;
-            }
-        }
-        close(fd);
+    if (fwFd > 0) {
+        writeMSG(fwFd, data, size);
+        ssize_t count;
+        SharedBuffer *res = readMSG(fwFd, &count);
+        write(outFd, res->data(), count);
     } else {
         ALOGD("PerfTest: failed to connect fw");
     }

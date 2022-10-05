@@ -7,10 +7,12 @@
 #include <binder/IServiceManager.h>
 #include <utils/Timers.h>
 
+#include "SharedBuffer.h"
+
 namespace android {
 
-#define LOCAL_SOCKET "androidperf"
-#define SERVER_SOCKET "AndroidPerfServer"
+#define LOCAL_SOCKET "AndroidPerf"
+#define FW_SOCKET "AndroidPerfFW"
 
 class AndroidPerf {
 public:
@@ -25,8 +27,10 @@ public:
     void dumpNetworkStats(int fd, String8 data);
     
     void writeMSG(int fd, const void *data, size_t size);
-    void readMSG(int fd, String8 *data);
+    SharedBuffer* readMSG(int fd, ssize_t *count);
     int  createSocket();
+    int  addEpollFd(int fd);
+
     void handleData(int fd, String8 data);
     void appendPadding(int fd, nsecs_t time);
     void requestFramework(const void * data, size_t size, int outFd);
@@ -35,6 +39,7 @@ public:
 private:
     android::IServiceManager* sm_;
     sp<IBinder> surfaceFlingerService;
+    int epollFd;
 };
 }
 

@@ -19,7 +19,7 @@ public class AndroidPerfServerFW extends Thread {
     private static final String TAG = "AndroidPerfFW";
     private static final String MSG_END = "PERF_MSG_END\n";
 
-    public static String SOCKET_ADDRESS = "AndroidPerfServer";
+    public static String SOCKET_ADDRESS = "AndroidPerfFW";
     NetworkStatsManager networkStatsManager = null;
 
     private Context systemContext = null;
@@ -134,16 +134,16 @@ public class AndroidPerfServerFW extends Thread {
             }
 
             Log.d(TAG, "client connected");
-
+            
             while (receiver != null && receiver.isConnected()) {
                 try {
                     len = input.read(buffer);
                     if (len > 0) {
                         msg.append(new String(buffer, 0, len));
-                        Log.d(TAG, "client msg: " + msg.toString());
                     }
-                    if (len < 1024) {
-                        String msgStr = msg.toString();
+                    msgEnd = msg.indexOf(MSG_END);
+                    if (msgEnd != -1) {
+                        String msgStr = msg.toString().substring(0, msgEnd);
                         Log.d(TAG, "receive client msg: " + msgStr);
                         handleData(receiver.getOutputStream(), msgStr);
                         break;

@@ -4,6 +4,7 @@ cc_binary {
     srcs: [
         "main.cpp",
         "server.cpp",
+        "SharedBuffer.cpp"
     ],
 
     shared_libs: [
