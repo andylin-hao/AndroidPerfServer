@@ -50,10 +50,10 @@ public class AndroidPerfServerFW extends Thread {
             NetStatsData wifiStats = new NetStatsData();
             NetworkStats.Bucket bucket = new NetworkStats.Bucket();
 
-            networkStatsManager.setPollForce(true);
+            // networkStatsManager.setPollForce(true);
             NetworkStats querySummaryWiFi = networkStatsManager.querySummary(1, (String) null, Long.MIN_VALUE, Long.MAX_VALUE);
             querySummaryWiFi.close();
-            networkStatsManager.setPollForce(false);
+            // networkStatsManager.setPollForce(false);
 
             NetworkStats querySummaryMobile = networkStatsManager.querySummary(0, (String) null, Long.MIN_VALUE, Long.MAX_VALUE);
             querySummaryMobile.close();
