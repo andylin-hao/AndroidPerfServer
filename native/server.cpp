@@ -125,7 +125,7 @@ int AndroidPerf::main() {
             } else {
                 ssize_t count;
                 SharedBuffer *res = readMSG(events[i].data.fd, &count);                
-                if (count > sizeof(MSG_END) - 1) {
+                if (count > (long) sizeof(MSG_END) - 1) {
                     String8 data((const char *) res->data(), count - sizeof(MSG_END) + 1);
                     ALOGD("data received: %s", data.string());
                     handleData(events[i].data.fd, data);
@@ -228,7 +228,7 @@ SharedBuffer* AndroidPerf::readMSG(int fd, ssize_t *count) {
                 break;
             }
             *count += len;
-            if (*count > sizeof(MSG_END) - 1) {
+            if (*count > (long) sizeof(MSG_END) - 1) {
                 const char *bufData = (const char *) buf->data();
                 bufData += (*count - sizeof(MSG_END) + 1);
                 String8 bufStr(bufData, sizeof(MSG_END) - 1);
@@ -237,7 +237,7 @@ SharedBuffer* AndroidPerf::readMSG(int fd, ssize_t *count) {
                 }
             }
             
-            if (*count > buf->size() - 512) {
+            if (*count > (long) buf->size() - 512) {
                 buf->editResize(buf->size() + 512);
             }
         } 
