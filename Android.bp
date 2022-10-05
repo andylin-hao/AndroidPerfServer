@@ -1,6 +1,6 @@
-java_binary {
-    name: "AndroidPerfServerFW",
-    wrapper: "AndroidPerfServerFW",
-    srcs: ["**/*.java"],
-    required: ["AndroidPerfServer"],
-}
+// java_binary {
+//     name: "AndroidPerfServerFW",
+//     wrapper: "AndroidPerfServerFW",
+//     srcs: ["**/*.java"],
+//     required: ["AndroidPerfServer"],
+// }
