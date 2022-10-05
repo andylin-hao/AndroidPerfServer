@@ -95,8 +95,6 @@ public class AndroidPerfServerFW extends Thread {
     @Override
     public void run() {
         byte[] buffer = new byte[1024];
-        StringBuilder msg = new StringBuilder();
-        int msgEnd;
         InputStream input;
         int len;
         LocalServerSocket server;
@@ -135,11 +133,15 @@ public class AndroidPerfServerFW extends Thread {
 
             Log.d(TAG, "client connected");
             
+
+            StringBuilder msg = new StringBuilder();
+            int msgEnd;
             while (receiver != null && receiver.isConnected()) {
                 try {
                     len = input.read(buffer);
                     if (len > 0) {
                         msg.append(new String(buffer, 0, len));
+                        Log.d(TAG, "receive client msg: " + msg.toString());
                     }
                     msgEnd = msg.indexOf(MSG_END);
                     if (msgEnd != -1) {

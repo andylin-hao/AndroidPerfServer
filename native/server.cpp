@@ -166,7 +166,7 @@ void AndroidPerf::dumpNetworkStats(int fd, String8 data) {
         fclose(file);
     } else {
         String8 reply;
-        ALOGD("PerfTest: Begin");
+        ALOGD("PerfTest: Begin %s", data.string());
         requestFramework(data.string(), data.size(), fd);
     }
 }
@@ -275,8 +275,10 @@ void AndroidPerf::requestFramework(const void * data, size_t size, int outFd) {
         writeMSG(fwFd, data, size);
         ssize_t count;
         SharedBuffer *res = readMSG(fwFd, &count);
+        close(fwFd);
         write(outFd, res->data(), count);
     } else {
         ALOGD("PerfTest: failed to connect fw");
+        writeMSG(outFd, "Failed", 6);
     }
 }
