@@ -40,6 +40,7 @@ using ::android::SharedBuffer;
 #define MSG_END   "PERF_MSG_END\n"
 #define PADDING   "PADDING"
 
+
 static int nonBlockingSocket(int sfd) {
     int flags;
 
@@ -160,13 +161,45 @@ void AndroidPerf::dumpLayerLatency(int fd, String16 layerName) {
 
 void AndroidPerf::dumpNetworkStats(int fd, String8 data) {
     if (FILE *file = fopen("/proc/net/xt_qtaguid/stats", "r")) {
-        int stats_fd = fileno(file);
-        if (sendfile(fd, stats_fd, NULL, 0x7ffff000) < 0) 
-            ALOGE("failed to send network stats file with xt_qtaguid");
+        const char *uid = data.string() + sizeof("network");
+        char * line = (char *) malloc(1024);
+        size_t len = 0;
+        ssize_t read;
+        ALOGD("Perftest: uid is %s", uid);
+        while ((read = getline(&line, &len, file)) != -1) {
+            char *token = strtok(line, " ");
+            int count = 0;
+            while (token) {
+                if (count == 3) {
+                    if (strcmp(token, uid))
+                        break;
+                    long netStats[4];
+                    while (token) {
+                        ALOGD("Perftest: token is %s", token);
+                        if (count >= 5 && count <= 8) {
+                            netStats[count - 5] = atol(token);
+                            if (count == 8) {
+                                write(fd, netStats, sizeof(netStats));
+                                write(fd, MSG_END, sizeof(MSG_END) - 1);  
+                                free(line);
+                                fclose(file);
+                                return;
+                            }
+                        }    
+                        token = strtok(NULL, " ");
+                        count++;
+                    }
+                }
+                token = strtok(NULL, " ");
+                count++;
+            }
+        }
+        long netStats[4] = {0};
+        write(fd, netStats, sizeof(netStats));
+        write(fd, MSG_END, sizeof(MSG_END) - 1); 
+        free(line);
         fclose(file);
     } else {
-        String8 reply;
-        ALOGD("PerfTest: Begin %s", data.string());
         requestFramework(data.string(), data.size(), fd);
     }
 }
@@ -272,13 +305,15 @@ void AndroidPerf::requestFramework(const void * data, size_t size, int outFd) {
     int fwFd = socket_local_client(FW_SOCKET, ANDROID_SOCKET_NAMESPACE_ABSTRACT, SOCK_STREAM);
 
     if (fwFd > 0) {
+        ALOGD("write to fw");
         writeMSG(fwFd, data, size);
         ssize_t count;
         SharedBuffer *res = readMSG(fwFd, &count);
         close(fwFd);
         write(outFd, res->data(), count);
+        SharedBuffer::dealloc(res);
     } else {
-        ALOGD("PerfTest: failed to connect fw");
+        ALOGE("failed to connect fw");
         writeMSG(outFd, "Failed", 6);
     }
 }

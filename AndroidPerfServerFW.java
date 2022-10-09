@@ -3,6 +3,7 @@ package com.androidperf.server;
 import android.app.ActivityThread;
 import android.content.Context;
 import android.os.Looper;
+import android.os.Build;
 import android.net.LocalServerSocket;
 import android.net.LocalSocket;
 import android.net.LocalSocketAddress;
@@ -13,6 +14,7 @@ import android.util.Log;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 
 public class AndroidPerfServerFW extends Thread {
@@ -36,9 +38,12 @@ public class AndroidPerfServerFW extends Thread {
 
     private void handleData(OutputStream outputStream, String data) {
         if (data.contains("network ")) {
-            Log.d(TAG, "Network stats");
-            int uid = Integer.parseInt(data.split(" ")[1]);
-            dumpNetworkStats(outputStream, uid);
+            try {
+                int uid = Integer.parseInt(data.split(" ")[1]);
+                dumpNetworkStats(outputStream, uid);
+            } catch (Exception e) {
+                Log.e(TAG, "network stats command corrupted");
+            }
         } else if (data.contains("PING")) {
             writeMSG(outputStream, "OKAY".getBytes());
         }
@@ -50,10 +55,24 @@ public class AndroidPerfServerFW extends Thread {
             NetStatsData wifiStats = new NetStatsData();
             NetworkStats.Bucket bucket = new NetworkStats.Bucket();
 
-            networkStatsManager.setPollOnOpen(true);
+            Method setPollForce = null;
+            if (Build.VERSION.SDK_INT >= 28) {
+                try {
+                    setPollForce = networkStatsManager.getClass().getMethod("setPollForce", boolean.class);
+                    setPollForce.invoke(true);
+                } catch (Exception e) {
+                    Log.e(TAG, "cannot find setPollForce");
+                }
+            }
             NetworkStats querySummaryWiFi = networkStatsManager.querySummary(1, (String) null, Long.MIN_VALUE, Long.MAX_VALUE);
             querySummaryWiFi.close();
-            networkStatsManager.setPollOnOpen(false);
+            if (setPollForce != null) {
+                try {
+                    setPollForce.invoke(false);
+                } catch (Exception e) {
+                    Log.e(TAG, "cannot invoke setPollForce");
+                }
+            }
 
             NetworkStats querySummaryMobile = networkStatsManager.querySummary(0, (String) null, Long.MIN_VALUE, Long.MAX_VALUE);
             querySummaryMobile.close();
@@ -79,7 +98,7 @@ public class AndroidPerfServerFW extends Thread {
             outputStream.write(mobileStats.toBytes());
             outputStream.write(MSG_END.getBytes());
         } catch (Exception e) {
-            Log.d(TAG, e.toString());
+            Log.e(TAG, e.toString());
         }
     }
 
@@ -88,7 +107,7 @@ public class AndroidPerfServerFW extends Thread {
             outputStream.write(data);
             outputStream.write(MSG_END.getBytes());
         } catch (Exception e) {
-            Log.d(TAG, e.toString());
+            Log.e(TAG, e.toString());
         }
     }
 
