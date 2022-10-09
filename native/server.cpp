@@ -33,7 +33,6 @@ using namespace android;
 
 using ::android::base::unique_fd;
 using ::android::base::WriteFully;
-using ::android::SharedBuffer;
 
 #define MAX_EVENTS 64
 #define SEND_SIZE 1024
@@ -125,13 +124,13 @@ int AndroidPerf::main() {
                 continue;
             } else {
                 ssize_t count;
-                SharedBuffer *res = readMSG(events[i].data.fd, &count);                
+                char *res = readMSG(events[i].data.fd, &count);                
                 if (count > (long) sizeof(MSG_END) - 1) {
-                    String8 data((const char *) res->data(), count - sizeof(MSG_END) + 1);
+                    String8 data(res, count - sizeof(MSG_END) + 1);
                     ALOGD("data received: %s", data.string());
                     handleData(events[i].data.fd, data);
                 }
-                SharedBuffer::dealloc(res);
+                free(res);
             }
         }
     }
@@ -165,36 +164,23 @@ void AndroidPerf::dumpNetworkStats(int fd, String8 data) {
         char * line = (char *) malloc(1024);
         size_t len = 0;
         ssize_t read;
-        ALOGD("Perftest: uid is %s", uid);
+        long netStats[4] = {0};
         while ((read = getline(&line, &len, file)) != -1) {
             char *token = strtok(line, " ");
             int count = 0;
             while (token) {
-                if (count == 3) {
-                    if (strcmp(token, uid))
+                if (count == 3 && strcmp(token, uid) != 0)
+                    break;requestFramework(data.string(), data.size(), fd);
+                if (count >= 5 && count <= 8) {
+                    netStats[count - 5] += atol(token);
+                    if (count == 8) {
                         break;
-                    long netStats[4];
-                    while (token) {
-                        ALOGD("Perftest: token is %s", token);
-                        if (count >= 5 && count <= 8) {
-                            netStats[count - 5] = atol(token);
-                            if (count == 8) {
-                                write(fd, netStats, sizeof(netStats));
-                                write(fd, MSG_END, sizeof(MSG_END) - 1);  
-                                free(line);
-                                fclose(file);
-                                return;
-                            }
-                        }    
-                        token = strtok(NULL, " ");
-                        count++;
                     }
                 }
                 token = strtok(NULL, " ");
                 count++;
             }
         }
-        long netStats[4] = {0};
         write(fd, netStats, sizeof(netStats));
         write(fd, MSG_END, sizeof(MSG_END) - 1); 
         free(line);
@@ -245,12 +231,12 @@ void AndroidPerf::writeMSG(int fd, const void *data, size_t size) {
     write(fd, MSG_END, sizeof(MSG_END) - 1);
 }
 
-SharedBuffer* AndroidPerf::readMSG(int fd, ssize_t *count) {
-    SharedBuffer* buf = SharedBuffer::alloc(512);
+char* AndroidPerf::readMSG(int fd, ssize_t *count) {
+    // TODO deal with buffer overflow
+    char *buf = (char *)calloc(4096, sizeof(char));
     *count = 0;
     while (1) {
-        char *data = (char *) buf->data();
-        int len = TEMP_FAILURE_RETRY(read(fd, data + *count, 512));
+        int len = TEMP_FAILURE_RETRY(read(fd, buf + *count, 4096));
         if (len < 0) {
             if (errno != EAGAIN) {
                 ALOGE("read failed");
@@ -262,16 +248,12 @@ SharedBuffer* AndroidPerf::readMSG(int fd, ssize_t *count) {
             }
             *count += len;
             if (*count > (long) sizeof(MSG_END) - 1) {
-                const char *bufData = (const char *) buf->data();
+                const char *bufData = (const char *) buf;
                 bufData += (*count - sizeof(MSG_END) + 1);
                 String8 bufStr(bufData, sizeof(MSG_END) - 1);
                 if (bufStr.contains(MSG_END)) {
                     break;
                 }
-            }
-            
-            if (*count > (long) buf->size() - 512) {
-                buf->editResize(buf->size() + 512);
             }
         } 
     }
@@ -305,13 +287,12 @@ void AndroidPerf::requestFramework(const void * data, size_t size, int outFd) {
     int fwFd = socket_local_client(FW_SOCKET, ANDROID_SOCKET_NAMESPACE_ABSTRACT, SOCK_STREAM);
 
     if (fwFd > 0) {
-        ALOGD("write to fw");
         writeMSG(fwFd, data, size);
         ssize_t count;
-        SharedBuffer *res = readMSG(fwFd, &count);
+        char *res = readMSG(fwFd, &count);
         close(fwFd);
-        write(outFd, res->data(), count);
-        SharedBuffer::dealloc(res);
+        write(outFd, res, count);
+        free(res);
     } else {
         ALOGE("failed to connect fw");
         writeMSG(outFd, "Failed", 6);

@@ -16,6 +16,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 
 public class AndroidPerfServerFW extends Thread {
     private static final String TAG = "AndroidPerfFW";
@@ -59,7 +60,7 @@ public class AndroidPerfServerFW extends Thread {
             if (Build.VERSION.SDK_INT >= 28) {
                 try {
                     setPollForce = networkStatsManager.getClass().getMethod("setPollForce", boolean.class);
-                    setPollForce.invoke(true);
+                    setPollForce.invoke(networkStatsManager, true);
                 } catch (Exception e) {
                     Log.e(TAG, "cannot find setPollForce");
                 }
@@ -68,7 +69,7 @@ public class AndroidPerfServerFW extends Thread {
             querySummaryWiFi.close();
             if (setPollForce != null) {
                 try {
-                    setPollForce.invoke(false);
+                    setPollForce.invoke(networkStatsManager, false);
                 } catch (Exception e) {
                     Log.e(TAG, "cannot invoke setPollForce");
                 }
@@ -185,6 +186,7 @@ public class AndroidPerfServerFW extends Thread {
 
         public byte[] toBytes() {
             ByteBuffer buffer = ByteBuffer.allocate(32);
+            buffer.order(ByteOrder.LITTLE_ENDIAN);
             buffer.putLong(0, mRxBytes);
             buffer.putLong(8, mRxPackets);
             buffer.putLong(16, mTxBytes);

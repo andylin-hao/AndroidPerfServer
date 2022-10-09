@@ -3,8 +3,7 @@ include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES:= \
 	main.cpp \
-	server.cpp \
-	SharedBuffer.cpp
+	server.cpp 
 
 LOCAL_SHARED_LIBRARIES := \
 	libbase \

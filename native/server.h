@@ -7,8 +7,6 @@
 #include <binder/IServiceManager.h>
 #include <utils/Timers.h>
 
-#include "SharedBuffer.h"
-
 namespace android {
 
 #define LOCAL_SOCKET "AndroidPerf"
@@ -27,7 +25,7 @@ public:
     void dumpNetworkStats(int fd, String8 data);
     
     void writeMSG(int fd, const void *data, size_t size);
-    SharedBuffer* readMSG(int fd, ssize_t *count);
+    char* readMSG(int fd, ssize_t *count);
     int  createSocket();
     int  addEpollFd(int fd);
 
