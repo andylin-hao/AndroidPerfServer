@@ -9,7 +9,8 @@
 
 namespace android {
 
-#define LOCAL_SOCKET "androidperf"
+#define LOCAL_SOCKET "AndroidPerf"
+#define FW_SOCKET "AndroidPerfFW"
 
 class AndroidPerf {
 public:
@@ -21,15 +22,22 @@ public:
     
     void dumpLayerListData(int fd);
     void dumpLayerLatency(int fd, String16 layerName);
-    void writeMSG(int fd, const char *data);
+    void dumpNetworkStats(int fd, String8 data);
+    
+    void writeMSG(int fd, const void *data, size_t size);
+    char* readMSG(int fd, ssize_t *count);
     int  createSocket();
+    int  addEpollFd(int fd);
+
     void handleData(int fd, String8 data);
     void appendPadding(int fd, nsecs_t time);
+    void requestFramework(const void * data, size_t size, int outFd);
 
 
 private:
     android::IServiceManager* sm_;
     sp<IBinder> surfaceFlingerService;
+    int epollFd;
 };
 }
 
