@@ -34,7 +34,12 @@ public class AndroidPerfServerFW extends Thread {
         server.networkStatsManager = (NetworkStatsManager) server.systemContext.getSystemService("netstats");
 
         server.start();
-        Looper.loop();
+        try {
+            server.join();
+        } catch (Exception e) {
+            Log.e(TAG, "failed to join");
+        }
+        System.exit(0);
     }
 
     private void handleData(OutputStream outputStream, String data) {
@@ -156,7 +161,7 @@ public class AndroidPerfServerFW extends Thread {
 
             StringBuilder msg = new StringBuilder();
             int msgEnd;
-            while (receiver != null && receiver.isConnected()) {
+            while (receiver != null) {
                 try {
                     len = input.read(buffer);
                     if (len > 0) {

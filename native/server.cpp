@@ -59,84 +59,91 @@ static int nonBlockingSocket(int sfd) {
 }
 
 int AndroidPerf::main() {
-    struct epoll_event event;
-    struct epoll_event *events;
-    int socketFd;
-    if ((socketFd = createSocket()) < 0) {
-        ALOGE("create socket failed");
-        exit(EXIT_FAILURE);
+    pid_t pid = fork();
+    if (pid == 0) {
+        execl("/data/local/tmp/AndroidPerfServerFW", (char *)NULL);
     }
 
-    if (listen(socketFd, SOMAXCONN) < 0) {
-        ALOGE("failed to listen socket");
-        exit(EXIT_FAILURE);
-    }
+    else {
+        struct epoll_event event;
+        struct epoll_event *events;
+        int socketFd;
+        if ((socketFd = createSocket()) < 0) {
+            ALOGE("create socket failed");
+            exit(EXIT_FAILURE);
+        }
 
-    epollFd = epoll_create1(0);
-    if (epollFd == -1) {
-        ALOGE("epoll_create failed");
-        close(socketFd);
-        exit(EXIT_FAILURE);
-    }
-    event.events = EPOLLIN | EPOLLPRI | EPOLLERR | EPOLLHUP;
-    event.data.fd = socketFd;
-    if (epoll_ctl(epollFd, EPOLL_CTL_ADD, socketFd, &event) == -1) {
-        ALOGE("epoll_ctl failed");
-        close(socketFd);
-        exit(EXIT_FAILURE);
-    }
+        if (listen(socketFd, SOMAXCONN) < 0) {
+            ALOGE("failed to listen socket");
+            exit(EXIT_FAILURE);
+        }
 
-    /* Buffer where events are returned */
-    events = (struct epoll_event *)calloc(MAX_EVENTS, sizeof event);
+        epollFd = epoll_create1(0);
+        if (epollFd == -1) {
+            ALOGE("epoll_create failed");
+            close(socketFd);
+            exit(EXIT_FAILURE);
+        }
+        event.events = EPOLLIN | EPOLLPRI | EPOLLERR | EPOLLHUP;
+        event.data.fd = socketFd;
+        if (epoll_ctl(epollFd, EPOLL_CTL_ADD, socketFd, &event) == -1) {
+            ALOGE("epoll_ctl failed");
+            close(socketFd);
+            exit(EXIT_FAILURE);
+        }
 
-    /* The event loop */
-    while (1) {
-        int n, i;
+        /* Buffer where events are returned */
+        events = (struct epoll_event *)calloc(MAX_EVENTS, sizeof event);
 
-        n = epoll_wait(epollFd, events, MAX_EVENTS, -1);
-        for (i = 0; i < n; i++) {
-            if (!(events[i].events & EPOLLIN)) {
-                continue;
-            }
+        /* The event loop */
+        while (1) {
+            int n, i;
 
-            else if (socketFd == events[i].data.fd) {
-                while (1) {
-                    struct sockaddr in_addr;
-                    socklen_t in_len;
-                    int clientFd;
+            n = epoll_wait(epollFd, events, MAX_EVENTS, -1);
+            for (i = 0; i < n; i++) {
+                if (!(events[i].events & EPOLLIN)) {
+                    continue;
+                }
 
-                    in_len = sizeof in_addr;
-                    clientFd = accept(socketFd, &in_addr, &in_len);
-                    if (clientFd == -1) {
-                        if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
-                            break;
-                        } else {
-                            ALOGE("accept connection failed");
+                else if (socketFd == events[i].data.fd) {
+                    while (1) {
+                        struct sockaddr in_addr;
+                        socklen_t in_len;
+                        int clientFd;
+
+                        in_len = sizeof in_addr;
+                        clientFd = accept(socketFd, &in_addr, &in_len);
+                        if (clientFd == -1) {
+                            if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
+                                break;
+                            } else {
+                                ALOGE("accept connection failed");
+                                break;
+                            }
+                        }
+
+                        if (addEpollFd(clientFd) < 0) {
+                            ALOGE("failed to add client fd to epoll");
                             break;
                         }
                     }
-
-                    if (addEpollFd(clientFd) < 0) {
-                        ALOGE("failed to add client fd to epoll");
-                        break;
+                    continue;
+                } else {
+                    ssize_t count;
+                    char *res = readMSG(events[i].data.fd, &count);                
+                    if (count > (long) sizeof(MSG_END) - 1) {
+                        String8 data(res, count - sizeof(MSG_END) + 1);
+                        ALOGD("data received: %s", data.string());
+                        handleData(events[i].data.fd, data);
                     }
+                    free(res);
                 }
-                continue;
-            } else {
-                ssize_t count;
-                char *res = readMSG(events[i].data.fd, &count);                
-                if (count > (long) sizeof(MSG_END) - 1) {
-                    String8 data(res, count - sizeof(MSG_END) + 1);
-                    ALOGD("data received: %s", data.string());
-                    handleData(events[i].data.fd, data);
-                }
-                free(res);
             }
         }
+        
+        free(events);
+        close(socketFd);
     }
-    
-    free(events);
-    close(socketFd);
 
     return 0;
 }
@@ -170,7 +177,7 @@ void AndroidPerf::dumpNetworkStats(int fd, String8 data) {
             int count = 0;
             while (token) {
                 if (count == 3 && strcmp(token, uid) != 0)
-                    break;requestFramework(data.string(), data.size(), fd);
+                    break;
                 if (count >= 5 && count <= 8) {
                     netStats[count - 5] += atol(token);
                     if (count == 8) {
