@@ -20,7 +20,7 @@ import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
-public class AndroidPerfServerFW extends Thread {
+public class AndroidPerfServer extends Thread {
     private static final String TAG = "AndroidPerfFW";
     private static final String MSG_END = "PERF_MSG_END\n";
 
@@ -30,9 +30,11 @@ public class AndroidPerfServerFW extends Thread {
 
     private Context systemContext = null;
 
+    public native int nativeMain();
+
     public static void main(String[] args) {
         System.load("/data/local/tmp/libandroidperf_jni.so");
-        AndroidPerfServerFW server = new AndroidPerfServerFW();
+        AndroidPerfServer server = new AndroidPerfServer();
         Looper.prepareMainLooper();
         server.systemContext = ActivityThread.systemMain().getSystemContext();
         server.networkStatsManager = (NetworkStatsManager) server.systemContext.getSystemService("netstats");
@@ -44,8 +46,8 @@ public class AndroidPerfServerFW extends Thread {
         // } catch (Exception e) {
         //     Log.e(TAG, "failed to join");
         // }
-        server.hello();
-        System.exit(0);
+        
+        System.exit(server.nativeMain());
     }
 
     private void handleData(OutputStream outputStream, String data) {
@@ -200,6 +202,10 @@ public class AndroidPerfServerFW extends Thread {
         }
     }
 
+    public void onRequest(String data, int fd) {
+        System.out.println(data + " " + String.valueOf(fd));
+    }
+
     class NetStatsData {
         public long mRxBytes = 0;
         public long mRxPackets = 0;
@@ -216,6 +222,4 @@ public class AndroidPerfServerFW extends Thread {
             return buffer.array();
         }
     }
-
-    public native void hello();
 }

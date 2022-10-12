@@ -6,6 +6,7 @@
 #include <android-base/unique_fd.h>
 #include <binder/IServiceManager.h>
 #include <utils/Timers.h>
+#include <jni.h>
 
 namespace android {
 
@@ -14,8 +15,10 @@ namespace android {
 
 class AndroidPerf {
 public:
-    explicit AndroidPerf(android::IServiceManager* sm) : 
+    explicit AndroidPerf(android::IServiceManager* sm, JNIEnv *jniEnv, jobject& server) : 
         sm_(sm), 
+        env(jniEnv),
+        serverInstance(server),
         surfaceFlingerService(sm_->checkService(String16("SurfaceFlinger"))) 
         {}
     int main();
@@ -31,11 +34,13 @@ public:
 
     void handleData(int fd, String8 data);
     void appendPadding(int fd, nsecs_t time);
-    void requestFramework(const void * data, size_t size, int outFd);
+    void requestFramework(const char * data, int outFd);
 
 
 private:
     android::IServiceManager* sm_;
+    JNIEnv *env;
+    jobject &serverInstance;
     sp<IBinder> surfaceFlingerService;
     int epollFd;
 };
