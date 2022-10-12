@@ -10,6 +10,8 @@ import android.net.LocalSocketAddress;
 import android.app.usage.NetworkStats;
 import android.app.usage.NetworkStatsManager;
 import android.util.Log;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -24,21 +26,25 @@ public class AndroidPerfServerFW extends Thread {
 
     public static String SOCKET_ADDRESS = "AndroidPerfFW";
     NetworkStatsManager networkStatsManager = null;
+    PackageManager packageManager = null;
 
     private Context systemContext = null;
 
     public static void main(String[] args) {
+        System.load("/data/local/tmp/libandroidperf_jni.so");
         AndroidPerfServerFW server = new AndroidPerfServerFW();
         Looper.prepareMainLooper();
         server.systemContext = ActivityThread.systemMain().getSystemContext();
         server.networkStatsManager = (NetworkStatsManager) server.systemContext.getSystemService("netstats");
+        server.packageManager = server.systemContext.getPackageManager();
 
-        server.start();
-        try {
-            server.join();
-        } catch (Exception e) {
-            Log.e(TAG, "failed to join");
-        }
+        // server.start();
+        // try {
+        //     server.join();
+        // } catch (Exception e) {
+        //     Log.e(TAG, "failed to join");
+        // }
+        server.hello();
         System.exit(0);
     }
 
@@ -53,6 +59,17 @@ public class AndroidPerfServerFW extends Thread {
         } else if (data.contains("PING")) {
             writeMSG(outputStream, "OKAY".getBytes());
         }
+    }
+
+    private String getAppName(String packageName) {
+        ApplicationInfo applicationInfo = null;
+        try {
+            applicationInfo = packageManager.getApplicationInfo(packageName, 0);
+        } catch (Exception e) {
+            Log.e(TAG, "Cannot resolve the name of " + packageName);
+        }
+        String name = applicationInfo != null ? packageManager.getApplicationLabel(applicationInfo).toString() : "Unknown";
+        return name;
     }
 
     private void dumpNetworkStats(OutputStream outputStream, int uid) {
@@ -199,4 +216,6 @@ public class AndroidPerfServerFW extends Thread {
             return buffer.array();
         }
     }
+
+    public native void hello();
 }
