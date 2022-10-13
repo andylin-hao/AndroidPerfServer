@@ -59,7 +59,6 @@ static int nonBlockingSocket(int sfd) {
 }
 
 int AndroidPerf::main() {
-    requestFramework("data test", 2);
     struct epoll_event event;
     struct epoll_event *events;
     int socketFd;
@@ -287,6 +286,7 @@ int AndroidPerf::addEpollFd(int fd) {
 void AndroidPerf::requestFramework(const char * data, int outFd) {
     jclass AndroidPerf = env->FindClass("com/androidperf/server/AndroidPerfServer");
     jmethodID onRequestMethod = env->GetMethodID(AndroidPerf, "onRequest", "(Ljava/lang/String;I)V");
+
     env->CallVoidMethod(serverInstance, onRequestMethod, env->NewStringUTF(data), outFd);
     // int fwFd = socket_local_client(FW_SOCKET, ANDROID_SOCKET_NAMESPACE_ABSTRACT, SOCK_STREAM);
 
@@ -302,3 +302,5 @@ void AndroidPerf::requestFramework(const char * data, int outFd) {
     //     writeMSG(outFd, "Failed", 6);
     // }
 }
+
+
