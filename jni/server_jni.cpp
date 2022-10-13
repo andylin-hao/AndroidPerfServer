@@ -27,20 +27,31 @@
 #include <stdio.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <jni.h>
 
 using namespace android;
 
-int main() {
-    daemon(1, 0);
-    signal(SIGPIPE, SIG_IGN);
+extern "C" JNIEXPORT jint JNICALL
+Java_com_androidperf_server_AndroidPerfServer_nativeMain(JNIEnv* env,
+        jobject server) {
     sp<IServiceManager> sm = defaultServiceManager();
     if (sm == nullptr) {
         ALOGE("Unable to get default service manager!");
         exit(EXIT_FAILURE);
     }
 
-    AndroidPerf server(sm.get());
-    server.main();
+    AndroidPerf nativeServer(sm.get(), env, server);
+    nativeServer.main();
 
     return 0;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_androidperf_server_AndroidPerfServer_nativeWrite(JNIEnv* env,
+        jobject server, jbyteArray byteData, jint fd) {
+    (void)server;
+    char *data = (char *) env->GetByteArrayElements(byteData, NULL);
+    int len = env->GetArrayLength(byteData);
+    write(fd, data, len);
+    env->ReleaseByteArrayElements(byteData,(jbyte*)data, 0);
 }
