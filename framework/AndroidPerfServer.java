@@ -33,7 +33,7 @@ public class AndroidPerfServer extends Thread {
     public native int nativeMain();
 
     public static void main(String[] args) {
-        System.load("/data/local/tmp/libandroidperf_jni.so");
+        System.load("/data/local/tmp/libandroidperf.so");
         AndroidPerfServer server = new AndroidPerfServer();
         Looper.prepareMainLooper();
         server.systemContext = ActivityThread.systemMain().getSystemContext();
