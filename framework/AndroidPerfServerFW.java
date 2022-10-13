@@ -4,7 +4,6 @@ import android.app.ActivityThread;
 import android.content.Context;
 import android.os.Looper;
 import android.os.Build;
-import android.os.Process;
 import android.net.LocalServerSocket;
 import android.net.LocalSocket;
 import android.net.LocalSocketAddress;
@@ -14,8 +13,6 @@ import android.util.Log;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 
-import java.io.FileDescriptor;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -23,51 +20,42 @@ import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
-public class AndroidPerfServer {
-    private static final String TAG = "AndroidPerfServer";
+public class AndroidPerfServerFW extends Thread {
+    private static final String TAG = "AndroidPerfFW";
     private static final String MSG_END = "PERF_MSG_END\n";
 
+    public static String SOCKET_ADDRESS = "AndroidPerfFW";
     NetworkStatsManager networkStatsManager = null;
     PackageManager packageManager = null;
 
     private Context systemContext = null;
 
-    public native int nativeMain();
-    public native void nativeWrite(byte[] data, int fd);
-
     public static void main(String[] args) {
-        System.load("/data/local/tmp/libandroidperf.so");
-        AndroidPerfServer server = new AndroidPerfServer();
+        AndroidPerfServerFW server = new AndroidPerfServerFW();
         Looper.prepareMainLooper();
         server.systemContext = ActivityThread.systemMain().getSystemContext();
         server.networkStatsManager = (NetworkStatsManager) server.systemContext.getSystemService("netstats");
         server.packageManager = server.systemContext.getPackageManager();
-        Process.setArgV0("AndroidPerfServer");
-        Thread thread = new Thread(new Runnable() {
-            @Override
-            public void run() {
-                server.nativeMain();
-            }
-        });
-        thread.start();
+
+        server.start();
         try {
-            thread.join();
+            server.join();
         } catch (Exception e) {
-            Log.e(TAG, "failed to join thread", e);
+            Log.e(TAG, "failed to join");
         }
         System.exit(0);
     }
 
-    private void handleData(int fd, String data) {
+    private void handleData(OutputStream outputStream, String data) {
         if (data.contains("network ")) {
             try {
                 int uid = Integer.parseInt(data.split(" ")[1]);
-                dumpNetworkStats(fd, uid);
+                dumpNetworkStats(outputStream, uid);
             } catch (Exception e) {
                 Log.e(TAG, "network stats command corrupted");
             }
         } else if (data.contains("PING")) {
-            writeMSG(fd, "OKAY".getBytes());
+            writeMSG(outputStream, "OKAY".getBytes());
         }
     }
 
@@ -82,12 +70,10 @@ public class AndroidPerfServer {
         return name;
     }
 
-    private void dumpNetworkStats(int fd, int uid) {
+    private void dumpNetworkStats(OutputStream outputStream, int uid) {
         try {
-            // Looper.prepareMainLooper();
-            // systemContext = ActivityThread.systemMain().getSystemContext();
-            // networkStatsManager = (NetworkStatsManager) systemContext.getSystemService("netstats");
-            NetStatsData netStats = new NetStatsData();
+            NetStatsData mobileStats = new NetStatsData();
+            NetStatsData wifiStats = new NetStatsData();
             NetworkStats.Bucket bucket = new NetworkStats.Bucket();
 
             Method setPollForce = null;
@@ -114,43 +100,101 @@ public class AndroidPerfServer {
 
             while (querySummaryWiFi.getNextBucket(bucket)) {
                 if (uid == bucket.getUid() && bucket.getTag() == 0) {
-                    netStats.mRxBytes += bucket.getRxBytes();
-                    netStats.mRxPackets += bucket.getRxPackets();
-                    netStats.mTxBytes += bucket.getTxBytes();
-                    netStats.mTxPackets += bucket.getTxPackets();
+                    wifiStats.mRxBytes += bucket.getRxBytes();
+                    wifiStats.mRxPackets += bucket.getRxPackets();
+                    wifiStats.mTxBytes += bucket.getTxBytes();
+                    wifiStats.mTxPackets += bucket.getTxPackets();
                 }
             }
             while (querySummaryMobile.getNextBucket(bucket)) {
                 if (uid == bucket.getUid() && bucket.getTag() == 0) {
-                    netStats.mRxBytes += bucket.getRxBytes();
-                    netStats.mRxPackets += bucket.getRxPackets();
-                    netStats.mTxBytes += bucket.getTxBytes();
-                    netStats.mTxPackets += bucket.getTxPackets();
+                    mobileStats.mRxBytes += bucket.getRxBytes();
+                    mobileStats.mRxPackets += bucket.getRxPackets();
+                    mobileStats.mTxBytes += bucket.getTxBytes();
+                    mobileStats.mTxPackets += bucket.getTxPackets();
                 }
             }
 
-            nativeWrite(netStats.toBytes(), fd);
-            nativeWrite(MSG_END.getBytes(), fd);
+            outputStream.write(wifiStats.toBytes());
+            outputStream.write(mobileStats.toBytes());
+            outputStream.write(MSG_END.getBytes());
         } catch (Exception e) {
-            Log.e(TAG, "failed to dump netstat", e);
+            Log.e(TAG, e.toString());
         }
     }
 
-    private void writeMSG(int fd, byte[] data) {
+    private void writeMSG(OutputStream outputStream, byte[] data) {
         try {
-            nativeWrite(data, fd);
-            nativeWrite(MSG_END.getBytes(), fd);
+            outputStream.write(data);
+            outputStream.write(MSG_END.getBytes());
         } catch (Exception e) {
-            Log.e(TAG, "failed to write MSG", e);
+            Log.e(TAG, e.toString());
         }
     }
 
-    public void onRequest(String data, int fd) {
-        Log.d(TAG, "receive native msg: " + data + " " + String.valueOf(fd));
-        if (fd > 0) {
-            handleData(fd, data);
-        } else {
-            Log.e(TAG, "invalid fd");
+    @Override
+    public void run() {
+        byte[] buffer = new byte[1024];
+        InputStream input;
+        int len;
+        LocalServerSocket server;
+        LocalSocket receiver;
+        try {
+            server = new LocalServerSocket(SOCKET_ADDRESS);
+        } catch (IOException e) {
+            Log.e(TAG, "failed to create server");
+            e.printStackTrace();
+            return;
+        }
+
+        LocalSocketAddress localSocketAddress; 
+        localSocketAddress = server.getLocalSocketAddress();
+        String str = localSocketAddress.getName();
+
+        while (true) {
+            if (null == server){
+                Log.e(TAG, "server is null");
+                break;
+            }
+
+            try {
+                receiver = server.accept();
+            } catch (IOException e) {
+                Log.e(TAG, e.toString());
+                continue;
+            }                   
+
+            try {
+                input = receiver.getInputStream();
+            } catch (IOException e) {
+                Log.e(TAG, e.toString());
+                continue;
+            }
+
+            Log.d(TAG, "client connected");
+            
+
+            StringBuilder msg = new StringBuilder();
+            int msgEnd;
+            while (receiver != null) {
+                try {
+                    len = input.read(buffer);
+                    if (len > 0) {
+                        msg.append(new String(buffer, 0, len));
+                        Log.d(TAG, "receive client msg: " + msg.toString());
+                    }
+                    msgEnd = msg.indexOf(MSG_END);
+                    if (msgEnd != -1) {
+                        String msgStr = msg.toString().substring(0, msgEnd);
+                        Log.d(TAG, "receive client msg: " + msgStr);
+                        handleData(receiver.getOutputStream(), msgStr);
+                        break;
+                    }
+                } catch (IOException e) {
+                    Log.e(TAG, e.toString());
+                    break;
+                }
+            }
         }
     }
 
