@@ -72,8 +72,7 @@ public class AndroidPerfServer {
 
     private void dumpNetworkStats(int fd, int uid) {
         try {
-            NetStatsData mobileStats = new NetStatsData();
-            NetStatsData wifiStats = new NetStatsData();
+            NetStatsData netStats = new NetStatsData();
             NetworkStats.Bucket bucket = new NetworkStats.Bucket();
 
             Method setPollForce = null;
@@ -100,23 +99,22 @@ public class AndroidPerfServer {
 
             while (querySummaryWiFi.getNextBucket(bucket)) {
                 if (uid == bucket.getUid() && bucket.getTag() == 0) {
-                    wifiStats.mRxBytes += bucket.getRxBytes();
-                    wifiStats.mRxPackets += bucket.getRxPackets();
-                    wifiStats.mTxBytes += bucket.getTxBytes();
-                    wifiStats.mTxPackets += bucket.getTxPackets();
+                    netStats.mRxBytes += bucket.getRxBytes();
+                    netStats.mRxPackets += bucket.getRxPackets();
+                    netStats.mTxBytes += bucket.getTxBytes();
+                    netStats.mTxPackets += bucket.getTxPackets();
                 }
             }
             while (querySummaryMobile.getNextBucket(bucket)) {
                 if (uid == bucket.getUid() && bucket.getTag() == 0) {
-                    mobileStats.mRxBytes += bucket.getRxBytes();
-                    mobileStats.mRxPackets += bucket.getRxPackets();
-                    mobileStats.mTxBytes += bucket.getTxBytes();
-                    mobileStats.mTxPackets += bucket.getTxPackets();
+                    netStats.mRxBytes += bucket.getRxBytes();
+                    netStats.mRxPackets += bucket.getRxPackets();
+                    netStats.mTxBytes += bucket.getTxBytes();
+                    netStats.mTxPackets += bucket.getTxPackets();
                 }
             }
 
-            nativeWrite(wifiStats.toBytes(), fd);
-            nativeWrite(mobileStats.toBytes(), fd);
+            nativeWrite(netStats.toBytes(), fd);
             nativeWrite(MSG_END.getBytes(), fd);
         } catch (Exception e) {
             Log.e(TAG, e.toString());
