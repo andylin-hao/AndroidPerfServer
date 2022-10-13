@@ -34,8 +34,6 @@ using namespace android;
 extern "C" JNIEXPORT jint JNICALL
 Java_com_androidperf_server_AndroidPerfServer_nativeMain(JNIEnv* env,
         jobject server) {
-    daemon(1, 0);
-    signal(SIGPIPE, SIG_IGN);
     sp<IServiceManager> sm = defaultServiceManager();
     if (sm == nullptr) {
         ALOGE("Unable to get default service manager!");

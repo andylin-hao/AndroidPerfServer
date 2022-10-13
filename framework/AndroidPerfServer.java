@@ -43,7 +43,19 @@ public class AndroidPerfServer {
         server.networkStatsManager = (NetworkStatsManager) server.systemContext.getSystemService("netstats");
         server.packageManager = server.systemContext.getPackageManager();
         Process.setArgV0("AndroidPerfServer");
-        System.exit(server.nativeMain());
+        Thread thread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                server.nativeMain();
+            }
+        });
+        thread.start();
+        try {
+            thread.join();
+        } catch (Exception e) {
+            Log.e(TAG, "failed to join thread", e);
+        }
+        System.exit(0);
     }
 
     private void handleData(int fd, String data) {
@@ -72,6 +84,9 @@ public class AndroidPerfServer {
 
     private void dumpNetworkStats(int fd, int uid) {
         try {
+            // Looper.prepareMainLooper();
+            // systemContext = ActivityThread.systemMain().getSystemContext();
+            // networkStatsManager = (NetworkStatsManager) systemContext.getSystemService("netstats");
             NetStatsData netStats = new NetStatsData();
             NetworkStats.Bucket bucket = new NetworkStats.Bucket();
 
@@ -117,7 +132,7 @@ public class AndroidPerfServer {
             nativeWrite(netStats.toBytes(), fd);
             nativeWrite(MSG_END.getBytes(), fd);
         } catch (Exception e) {
-            Log.e(TAG, e.toString());
+            Log.e(TAG, "failed to dump netstat", e);
         }
     }
 
@@ -126,7 +141,7 @@ public class AndroidPerfServer {
             nativeWrite(data, fd);
             nativeWrite(MSG_END.getBytes(), fd);
         } catch (Exception e) {
-            Log.e(TAG, e.toString());
+            Log.e(TAG, "failed to write MSG", e);
         }
     }
 
