@@ -66,7 +66,8 @@ public class AndroidPerfServerFW extends Thread {
         } catch (Exception e) {
             Log.e(TAG, "Cannot resolve the name of " + packageName);
         }
-        String name = applicationInfo != null ? packageManager.getApplicationLabel(applicationInfo).toString() : "Unknown";
+        String name = applicationInfo != null ? packageManager.getApplicationLabel(applicationInfo).toString()
+                : "Unknown";
         return name;
     }
 
@@ -84,7 +85,8 @@ public class AndroidPerfServerFW extends Thread {
                     Log.e(TAG, "cannot find setPollForce");
                 }
             }
-            NetworkStats querySummaryWiFi = networkStatsManager.querySummary(1, (String) null, Long.MIN_VALUE, Long.MAX_VALUE);
+            NetworkStats querySummaryWiFi = networkStatsManager.querySummary(1, (String) null, Long.MIN_VALUE,
+                    Long.MAX_VALUE);
             querySummaryWiFi.close();
             if (setPollForce != null) {
                 try {
@@ -94,7 +96,8 @@ public class AndroidPerfServerFW extends Thread {
                 }
             }
 
-            NetworkStats querySummaryMobile = networkStatsManager.querySummary(0, (String) null, Long.MIN_VALUE, Long.MAX_VALUE);
+            NetworkStats querySummaryMobile = networkStatsManager.querySummary(0, (String) null, Long.MIN_VALUE,
+                    Long.MAX_VALUE);
             querySummaryMobile.close();
 
             while (querySummaryWiFi.getNextBucket(bucket)) {
@@ -145,12 +148,12 @@ public class AndroidPerfServerFW extends Thread {
             return;
         }
 
-        LocalSocketAddress localSocketAddress; 
+        LocalSocketAddress localSocketAddress;
         localSocketAddress = server.getLocalSocketAddress();
         String str = localSocketAddress.getName();
 
         while (true) {
-            if (null == server){
+            if (null == server) {
                 Log.e(TAG, "server is null");
                 break;
             }
@@ -160,7 +163,7 @@ public class AndroidPerfServerFW extends Thread {
             } catch (IOException e) {
                 Log.e(TAG, e.toString());
                 continue;
-            }                   
+            }
 
             try {
                 input = receiver.getInputStream();
@@ -170,7 +173,6 @@ public class AndroidPerfServerFW extends Thread {
             }
 
             Log.d(TAG, "client connected");
-            
 
             StringBuilder msg = new StringBuilder();
             int msgEnd;
