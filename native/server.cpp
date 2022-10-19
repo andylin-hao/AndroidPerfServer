@@ -229,6 +229,59 @@ void AndroidPerf::dumpNetworkStats(int fd, String8 data)
     }
 }
 
+void AndroidPerf::dumpIfconfig(int fd, String8 data)
+{
+    if (FILE *file = fopen("/proc/net/dev", "r"))
+    {
+        char *line = (char *)malloc(1024);
+        size_t len = 0;
+        ssize_t read;
+        char networkCardName[32];
+        /**
+         * ifConfig[0-14]:
+         * [0]:RX_bytes [1]:RX_packets [2]:RX_errors [3]:RX_dropped [4]:RX_overruns
+         * [5]:RX_frame [6]:RX_compressed [7]:RX_multicast [8]:TX_bytes [9]:TX_packets
+         * [10]:TX_errors [11]:TX_dropped [12]:TX_overruns [13]:TX_carrier [14]:collisions
+        */
+        long ifConfig[15] = {0};
+        read = fgets(line, 1024*sizeof(char *), file);
+        read = fgets(line, 1024*sizeof(char *), file);
+        while ((read = fgets(line, 1024*sizeof(char), file)) != NULL)
+        {
+            if(read == NULL){
+                break;
+            }
+            sscanf( buffer,"%s%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d",
+                networkCardName,
+                &ifConfig[0],
+                &ifConfig[1],
+                &ifConfig[2],
+                &ifConfig[3],
+                &ifConfig[4],
+                &ifConfig[5],
+                &ifConfig[6],
+                &ifConfig[7],
+                &ifConfig[8],
+                &ifConfig[9],
+                &ifConfig[10],
+                &ifConfig[11],
+                &ifConfig[12],
+                &ifConfig[13],
+                &ifConfig[14]
+            );
+            write(fd, networkCardName, sizeof(networkCardName));
+            write(fd, ifConfig, sizeof(ifConfig));
+        }
+        write(fd, MSG_END, sizeof(MSG_END) - 1);
+        free(line);
+        fclose(file);
+    }
+    else
+    {
+        requestFramework(data.string(), data.size(), fd);
+    }
+}
+
 int AndroidPerf::createSocket()
 {
     int socketFd = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -271,6 +324,10 @@ void AndroidPerf::handleData(int fd, String8 data)
     else if (data.contains("network"))
     {
         dumpNetworkStats(fd, data);
+    }
+    else if (data.contains("ifcongfig"))
+    {
+        dumpIfconfig(fd, data);
     }
     else if (data.contains("PING_FW"))
     {
