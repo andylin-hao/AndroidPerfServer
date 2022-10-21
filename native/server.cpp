@@ -233,9 +233,9 @@ void AndroidPerf::dumpIfconfig(int fd, String8 data)
 {
     if (FILE *file = fopen("/proc/net/dev", "r"))
     {
-        char *line = (char *)malloc(1024);
+        char line[1024];
         size_t len = 0;
-        ssize_t read;
+        char* read;
         char networkCardName[32];
         /**
          * ifConfig[0-14]:
@@ -244,14 +244,15 @@ void AndroidPerf::dumpIfconfig(int fd, String8 data)
          * [10]:TX_errors [11]:TX_dropped [12]:TX_overruns [13]:TX_carrier [14]:collisions
         */
         long ifConfig[15] = {0};
-        read = fgets(line, 1024*sizeof(char *), file);
-        read = fgets(line, 1024*sizeof(char *), file);
-        while ((read = fgets(line, 1024*sizeof(char), file)) != NULL)
+        read = fgets(line, 1024*sizeof(char), file);
+        read = fgets(line, 1024*sizeof(char), file);
+        while (read != NULL)
         {
+            read = fgets(line, 1024*sizeof(char), file);
             if(read == NULL){
                 break;
             }
-            sscanf( buffer,"%s%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d",
+            sscanf( line,"%s%ld%ld%ld%ld%ld%ld%ld%ld%ld%ld%ld%ld%ld%ld%ld",
                 networkCardName,
                 &ifConfig[0],
                 &ifConfig[1],
@@ -269,7 +270,7 @@ void AndroidPerf::dumpIfconfig(int fd, String8 data)
                 &ifConfig[13],
                 &ifConfig[14]
             );
-            write(fd, networkCardName, sizeof(networkCardName));
+            ALOGE("success to get data");
             write(fd, ifConfig, sizeof(ifConfig));
         }
         write(fd, MSG_END, sizeof(MSG_END) - 1);
@@ -325,7 +326,7 @@ void AndroidPerf::handleData(int fd, String8 data)
     {
         dumpNetworkStats(fd, data);
     }
-    else if (data.contains("ifcongfig"))
+    else if (data.contains("ifconfig"))
     {
         dumpIfconfig(fd, data);
     }
