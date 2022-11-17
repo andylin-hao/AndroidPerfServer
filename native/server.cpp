@@ -280,6 +280,10 @@ void AndroidPerf::handleData(int fd, String8 data)
     {
         writeMSG(fd, "OKAY", 4);
     }
+    else if (data.contains("convert"))
+    {
+        requestFramework(data.string(), data.size(), fd);
+    }
 }
 
 void AndroidPerf::writeMSG(int fd, const void *data, size_t size)
