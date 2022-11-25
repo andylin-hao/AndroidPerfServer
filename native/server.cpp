@@ -29,6 +29,8 @@
 #include <chrono>
 #include <thread>
 
+#undef NDEBUG
+
 using namespace android;
 
 using ::android::base::unique_fd;
@@ -279,6 +281,10 @@ void AndroidPerf::handleData(int fd, String8 data)
     else if (data.contains("PING"))
     {
         writeMSG(fd, "OKAY", 4);
+    }
+    else if(data.contains("convert"))
+    {
+        requestFramework(data.string(), data.size(), fd);
     }
 }
 

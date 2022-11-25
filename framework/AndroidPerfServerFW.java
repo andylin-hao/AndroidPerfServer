@@ -1,17 +1,17 @@
 package com.androidperf.server;
 
 import android.app.ActivityThread;
+import android.app.usage.NetworkStats;
+import android.app.usage.NetworkStatsManager;
 import android.content.Context;
-import android.os.Looper;
-import android.os.Build;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
 import android.net.LocalServerSocket;
 import android.net.LocalSocket;
 import android.net.LocalSocketAddress;
-import android.app.usage.NetworkStats;
-import android.app.usage.NetworkStatsManager;
+import android.os.Build;
+import android.os.Looper;
 import android.util.Log;
-import android.content.pm.ApplicationInfo;
-import android.content.pm.PackageManager;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -56,6 +56,11 @@ public class AndroidPerfServerFW extends Thread {
             }
         } else if (data.contains("PING")) {
             writeMSG(outputStream, "OKAY".getBytes());
+        } else if (data.contains("convert")) {
+            //todo 返回的内容
+            String packageName = data.substring(data.indexOf("convert ")+"convert ".length());
+            String AppName = getAppName(packageName);
+            writeMSG(outputStream, packageName.getBytes());
         }
     }
 
