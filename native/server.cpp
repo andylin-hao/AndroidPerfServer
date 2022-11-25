@@ -29,6 +29,8 @@
 #include <chrono>
 #include <thread>
 
+#undef NDEBUG
+
 using namespace android;
 
 using ::android::base::unique_fd;
@@ -280,7 +282,7 @@ void AndroidPerf::handleData(int fd, String8 data)
     {
         writeMSG(fd, "OKAY", 4);
     }
-    else if (data.contains("convert"))
+    else if(data.contains("convert"))
     {
         requestFramework(data.string(), data.size(), fd);
     }

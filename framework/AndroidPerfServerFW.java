@@ -56,7 +56,7 @@ public class AndroidPerfServerFW extends Thread {
             }
         } else if (data.contains("PING")) {
             writeMSG(outputStream, "OKAY".getBytes());
-        } else if (data.contains("convert ")) {
+        } else if (data.contains("convert")) {
             //todo 返回的内容
             String packageName = data.substring(data.indexOf("convert ")+"convert ".length());
             String AppName = getAppName(packageName);
