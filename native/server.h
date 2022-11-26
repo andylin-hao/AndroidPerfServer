@@ -24,7 +24,6 @@ public:
     void dumpLayerLatency(int fd, String16 layerName);
     void dumpNetworkStats(int fd, String8 data);
     void dumpIfconfig(int fd, String8 data);
-    void dumpEthtool(int fd, String8 data);
     
     void writeMSG(int fd, const void *data, size_t size);
     char* readMSG(int fd, ssize_t *count);
