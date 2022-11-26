@@ -30,13 +30,11 @@
 
 using namespace android;
 
-int main()
-{
+int main() {
     daemon(1, 0);
     signal(SIGPIPE, SIG_IGN);
     sp<IServiceManager> sm = defaultServiceManager();
-    if (sm == nullptr)
-    {
+    if (sm == nullptr) {
         ALOGE("Unable to get default service manager!");
         exit(EXIT_FAILURE);
     }
