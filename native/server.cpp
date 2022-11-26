@@ -25,9 +25,22 @@
 #include <cutils/sockets.h>
 #include <utils/String8.h>
 #include <utils/String16.h>
+#include <sys/types.h>
+#include <string.h>
+#include <stdlib.h>
+#include <sys/ioctl.h>
+#include <stdio.h>
+#include <string.h>
+#include <errno.h>
+#include <net/if.h>
+
+#include <linux/sockios.h>
+#include <linux/ethtool.h>
 
 #include <chrono>
 #include <thread>
+
+#undef NDEBUG
 
 using namespace android;
 
@@ -36,23 +49,21 @@ using ::android::base::WriteFully;
 
 #define MAX_EVENTS 64
 #define SEND_SIZE 1024
-#define MSG_END "PERF_MSG_END\n"
-#define PADDING "PADDING"
+#define MSG_END   "PERF_MSG_END\n"
+#define PADDING   "PADDING"
 
-static int nonBlockingSocket(int sfd)
-{
+
+static int nonBlockingSocket(int sfd) {
     int flags;
 
     flags = fcntl(sfd, F_GETFL, 0);
-    if (flags == -1)
-    {
+    if (flags == -1) {
         ALOGE("fcntl failed");
         return -1;
     }
 
     flags |= O_NONBLOCK;
-    if (fcntl(sfd, F_SETFL, flags) == -1)
-    {
+    if (fcntl(sfd, F_SETFL, flags) == -1) {
         ALOGE("fcntl nonblocking failed");
         return -1;
     }
@@ -60,42 +71,35 @@ static int nonBlockingSocket(int sfd)
     return 0;
 }
 
-int AndroidPerf::main()
-{
+int AndroidPerf::main() {
     pid_t pid = fork();
-    if (pid == 0)
-    {
+    if (pid == 0) {
         execl("/data/local/tmp/AndroidPerfServerFW", (char *)NULL);
     }
 
-    else
-    {
+    else {
         struct epoll_event event;
         struct epoll_event *events;
         int socketFd;
-        if ((socketFd = createSocket()) < 0)
-        {
+        if ((socketFd = createSocket()) < 0) {
             ALOGE("create socket failed");
             exit(EXIT_FAILURE);
         }
 
-        if (listen(socketFd, SOMAXCONN) < 0)
-        {
+        if (listen(socketFd, SOMAXCONN) < 0) {
             ALOGE("failed to listen socket");
             exit(EXIT_FAILURE);
         }
 
         epollFd = epoll_create1(0);
-        if (epollFd == -1)
-        {
+        if (epollFd == -1) {
             ALOGE("epoll_create failed");
             close(socketFd);
             exit(EXIT_FAILURE);
         }
         event.events = EPOLLIN | EPOLLPRI | EPOLLERR | EPOLLHUP;
         event.data.fd = socketFd;
-        if (epoll_ctl(epollFd, EPOLL_CTL_ADD, socketFd, &event) == -1)
-        {
+        if (epoll_ctl(epollFd, EPOLL_CTL_ADD, socketFd, &event) == -1) {
             ALOGE("epoll_ctl failed");
             close(socketFd);
             exit(EXIT_FAILURE);
@@ -105,55 +109,42 @@ int AndroidPerf::main()
         events = (struct epoll_event *)calloc(MAX_EVENTS, sizeof event);
 
         /* The event loop */
-        while (1)
-        {
+        while (1) {
             int n, i;
 
             n = epoll_wait(epollFd, events, MAX_EVENTS, -1);
-            for (i = 0; i < n; i++)
-            {
-                if (!(events[i].events & EPOLLIN))
-                {
+            for (i = 0; i < n; i++) {
+                if (!(events[i].events & EPOLLIN)) {
                     continue;
                 }
 
-                else if (socketFd == events[i].data.fd)
-                {
-                    while (1)
-                    {
+                else if (socketFd == events[i].data.fd) {
+                    while (1) {
                         struct sockaddr in_addr;
                         socklen_t in_len;
                         int clientFd;
 
                         in_len = sizeof in_addr;
                         clientFd = accept(socketFd, &in_addr, &in_len);
-                        if (clientFd == -1)
-                        {
-                            if ((errno == EAGAIN) || (errno == EWOULDBLOCK))
-                            {
+                        if (clientFd == -1) {
+                            if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
                                 break;
-                            }
-                            else
-                            {
+                            } else {
                                 ALOGE("accept connection failed");
                                 break;
                             }
                         }
 
-                        if (addEpollFd(clientFd) < 0)
-                        {
+                        if (addEpollFd(clientFd) < 0) {
                             ALOGE("failed to add client fd to epoll");
                             break;
                         }
                     }
                     continue;
-                }
-                else
-                {
+                } else {
                     ssize_t count;
-                    char *res = readMSG(events[i].data.fd, &count);
-                    if (count > (long)sizeof(MSG_END) - 1)
-                    {
+                    char *res = readMSG(events[i].data.fd, &count);                
+                    if (count > (long) sizeof(MSG_END) - 1) {
                         String8 data(res, count - sizeof(MSG_END) + 1);
                         ALOGD("data received: %s", data.string());
                         handleData(events[i].data.fd, data);
@@ -162,7 +153,7 @@ int AndroidPerf::main()
                 }
             }
         }
-
+        
         free(events);
         close(socketFd);
     }
@@ -170,16 +161,14 @@ int AndroidPerf::main()
     return 0;
 }
 
-void AndroidPerf::dumpLayerListData(int fd)
-{
+void AndroidPerf::dumpLayerListData(int fd) {
     Vector<String16> argList;
     argList.add(String16("--list"));
     surfaceFlingerService->dump(fd, argList);
     write(fd, MSG_END, sizeof(MSG_END) - 1);
 }
 
-void AndroidPerf::dumpLayerLatency(int fd, String16 layerName)
-{
+void AndroidPerf::dumpLayerLatency(int fd, String16 layerName) {
     Vector<String16> argLatency;
     argLatency.add(String16("--latency"));
     argLatency.add(layerName);
@@ -189,28 +178,22 @@ void AndroidPerf::dumpLayerLatency(int fd, String16 layerName)
     write(fd, MSG_END, sizeof(MSG_END) - 1);
 }
 
-void AndroidPerf::dumpNetworkStats(int fd, String8 data)
-{
-    if (FILE *file = fopen("/proc/net/xt_qtaguid/stats", "r"))
-    {
+void AndroidPerf::dumpNetworkStats(int fd, String8 data) {
+    if (FILE *file = fopen("/proc/net/xt_qtaguid/stats", "r")) {
         const char *uid = data.string() + sizeof("network");
-        char *line = (char *)malloc(1024);
+        char * line = (char *) malloc(1024);
         size_t len = 0;
         ssize_t read;
         long netStats[4] = {0};
-        while ((read = getline(&line, &len, file)) != -1)
-        {
+        while ((read = getline(&line, &len, file)) != -1) {
             char *token = strtok(line, " ");
             int count = 0;
-            while (token)
-            {
+            while (token) {
                 if (count == 3 && strcmp(token, uid) != 0)
                     break;
-                if (count >= 5 && count <= 8)
-                {
+                if (count >= 5 && count <= 8) {
                     netStats[count - 5] += atol(token);
-                    if (count == 8)
-                    {
+                    if (count == 8) {
                         break;
                     }
                 }
@@ -219,6 +202,68 @@ void AndroidPerf::dumpNetworkStats(int fd, String8 data)
             }
         }
         write(fd, netStats, sizeof(netStats));
+        write(fd, MSG_END, sizeof(MSG_END) - 1); 
+        free(line);
+        fclose(file);
+    } else {
+        requestFramework(data.string(), data.size(), fd);
+    }
+}
+
+void AndroidPerf::dumpIfconfig(int fd, String8 data)
+{
+    ALOGE("ifconfig in");
+    if (FILE *file = fopen("/proc/net/dev", "r"))
+    {
+        char line[1024];
+        size_t len = 0;
+        char* read;
+        char networkCardName[32];
+        /**
+         * ifConfig[0-14]:
+         * [0]:RX_bytes   [1]:RX_packets    [2]:RX_errors    [3]:RX_dropped  [4]:RX_overruns
+         * [5]:RX_frame   [6]:RX_compressed [7]:RX_multicast [8]:TX_bytes    [9]:TX_packets
+         * [10]:TX_errors [11]:TX_dropped   [12]:TX_overruns [13]:TX_carrier [14]:collisions
+        */
+        long ifConfig[15] = {0};
+        read = fgets(line, 1024*sizeof(char), file);
+        read = fgets(line, 1024*sizeof(char), file);
+        long lengthOfName[1] = {0};
+        long lengthOfLines = 0;
+        while (read != NULL)
+        {
+            read = fgets(line, 1024*sizeof(char), file);
+            if(read == NULL){
+                break;
+            }
+            memset(ifConfig,0,sizeof(ifConfig));
+            sscanf( line,"%s%ld%ld%ld%ld%ld%ld%ld%ld%ld%ld%ld%ld%ld%ld%ld",
+                networkCardName,
+                &ifConfig[0],
+                &ifConfig[1],
+                &ifConfig[2],
+                &ifConfig[3],
+                &ifConfig[4],
+                &ifConfig[5],
+                &ifConfig[6],
+                &ifConfig[7],
+                &ifConfig[8],
+                &ifConfig[9],
+                &ifConfig[10],
+                &ifConfig[11],
+                &ifConfig[12],
+                &ifConfig[13],
+                &ifConfig[14]
+            );
+            lengthOfName[0] = strlen(networkCardName);
+            ALOGE("ifconfig get data");
+            write(fd, lengthOfName, sizeof(lengthOfName));
+            write(fd, networkCardName, sizeof(networkCardName));
+            write(fd, ifConfig, sizeof(ifConfig));
+        }
+        long endNum[1] = {15};
+        write(fd, endNum, sizeof(endNum));
+        write(fd, "END_OF_IFCONFIG", sizeof("END_OF_IFCONFIG") - 1);
         write(fd, MSG_END, sizeof(MSG_END) - 1);
         free(line);
         fclose(file);
@@ -229,17 +274,15 @@ void AndroidPerf::dumpNetworkStats(int fd, String8 data)
     }
 }
 
-int AndroidPerf::createSocket()
-{
+int AndroidPerf::createSocket() {
     int socketFd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (socket_local_server_bind(socketFd, LOCAL_SOCKET, ANDROID_SOCKET_NAMESPACE_ABSTRACT) < 0)
-    {
+    ALOGD("socketFd %d",socketFd);
+    if (socket_local_server_bind(socketFd, LOCAL_SOCKET, ANDROID_SOCKET_NAMESPACE_ABSTRACT) < 0) {
         ALOGE("failed to create socket");
         return -1;
     }
 
-    if (nonBlockingSocket(socketFd) < 0)
-    {
+    if (nonBlockingSocket(socketFd) < 0) {
         ALOGE("failed to make socket nonblocking");
         return -1;
     }
@@ -247,107 +290,82 @@ int AndroidPerf::createSocket()
     return socketFd;
 }
 
-void AndroidPerf::handleData(int fd, String8 data)
-{
+void AndroidPerf::handleData(int fd, String8 data) {
     int sfd[2];
     pipe(sfd);
     unique_fd local_end(sfd[0]);
     unique_fd remote_end(sfd[1]);
-
-    if (data.contains("list"))
-    {
+    ALOGD("handledata received: %s", data.string());
+    if (data.contains("list")) {
         dumpLayerListData(remote_end.get());
-        while (splice(local_end.get(), NULL, fd, NULL, SEND_SIZE, SPLICE_F_MORE | SPLICE_F_NONBLOCK) == SEND_SIZE)
-        {
-        }
-    }
-    else if (data.contains("latency"))
-    {
+        while(splice(local_end.get(), NULL, fd, NULL, SEND_SIZE, SPLICE_F_MORE|SPLICE_F_NONBLOCK) == SEND_SIZE){}
+    } else if (data.contains("latency")) {
         dumpLayerLatency(remote_end.get(), String16(data.string() + strlen("latency") + 1));
-        while (splice(local_end.get(), NULL, fd, NULL, SEND_SIZE, SPLICE_F_MORE | SPLICE_F_NONBLOCK) == SEND_SIZE)
-        {
-        }
-    }
-    else if (data.contains("network"))
-    {
+        while(splice(local_end.get(), NULL, fd, NULL, SEND_SIZE, SPLICE_F_MORE|SPLICE_F_NONBLOCK) == SEND_SIZE){}
+    } else if (data.contains("network")) {
         dumpNetworkStats(fd, data);
-    }
-    else if (data.contains("PING_FW"))
-    {
+    } else if (data.contains("ifconfig")) {
+        dumpIfconfig(fd, data);
+    } else if (data.contains("ethtool")) {
+        ALOGD("in ethtool");
+        dumpEthtool(fd, data);
+    } else if (data.contains("PING_FW")) {
         requestFramework(data.string(), data.size(), fd);
-    }
-    else if (data.contains("PING"))
-    {
+    } else if (data.contains("PING")) {
         writeMSG(fd, "OKAY", 4);
     }
 }
 
-void AndroidPerf::writeMSG(int fd, const void *data, size_t size)
-{
+void AndroidPerf::writeMSG(int fd, const void *data, size_t size) {
     write(fd, data, size);
     write(fd, MSG_END, sizeof(MSG_END) - 1);
 }
 
-char *AndroidPerf::readMSG(int fd, ssize_t *count)
-{
+char* AndroidPerf::readMSG(int fd, ssize_t *count) {
     // TODO deal with buffer overflow
     char *buf = (char *)calloc(4096, sizeof(char));
     *count = 0;
-    while (1)
-    {
+    while (1) {
         int len = TEMP_FAILURE_RETRY(read(fd, buf + *count, 4096));
-        if (len < 0)
-        {
-            if (errno != EAGAIN)
-            {
+        if (len < 0) {
+            if (errno != EAGAIN) {
                 ALOGE("read failed");
             }
             break;
-        }
-        else
-        {
-            if (len == 0)
-            {
+        } else {
+            if (len == 0) {
                 break;
             }
             *count += len;
-            if (*count > (long)sizeof(MSG_END) - 1)
-            {
-                const char *bufData = (const char *)buf;
+            if (*count > (long) sizeof(MSG_END) - 1) {
+                const char *bufData = (const char *) buf;
                 bufData += (*count - sizeof(MSG_END) + 1);
                 String8 bufStr(bufData, sizeof(MSG_END) - 1);
-                if (bufStr.contains(MSG_END))
-                {
+                if (bufStr.contains(MSG_END)) {
                     break;
                 }
             }
-        }
+        } 
     }
     return buf;
 }
 
-void AndroidPerf::appendPadding(int fd, nsecs_t time)
-{
+void AndroidPerf::appendPadding(int fd, nsecs_t time) {
     std::string padding;
-    base::StringAppendF(&padding, "%s"
-                                  "\t%" PRId64 "\n",
-                        PADDING, time);
+    base::StringAppendF(&padding, "%s" "\t%" PRId64 "\n", PADDING, time);
     write(fd, padding.c_str(), padding.size());
 }
 
-int AndroidPerf::addEpollFd(int fd)
-{
+int AndroidPerf::addEpollFd(int fd) {
     struct epoll_event event;
-    if (nonBlockingSocket(fd) < 0)
-    {
+    if (nonBlockingSocket(fd) < 0) {
         ALOGE("failed to make socket nonblocking");
         return -1;
     }
 
     event.data.fd = fd;
     event.events = EPOLLIN | EPOLLET;
-    if (epoll_ctl(epollFd, EPOLL_CTL_ADD, fd, &event) == -1)
-    {
+    if (epoll_ctl(epollFd, EPOLL_CTL_ADD, fd, &event) == -1) {
         ALOGE("epoll_ctl failed");
         return -1;
     }
@@ -355,21 +373,17 @@ int AndroidPerf::addEpollFd(int fd)
     return 0;
 }
 
-void AndroidPerf::requestFramework(const void *data, size_t size, int outFd)
-{
+void AndroidPerf::requestFramework(const void * data, size_t size, int outFd) {
     int fwFd = socket_local_client(FW_SOCKET, ANDROID_SOCKET_NAMESPACE_ABSTRACT, SOCK_STREAM);
 
-    if (fwFd > 0)
-    {
+    if (fwFd > 0) {
         writeMSG(fwFd, data, size);
         ssize_t count;
         char *res = readMSG(fwFd, &count);
         close(fwFd);
         write(outFd, res, count);
         free(res);
-    }
-    else
-    {
+    } else {
         ALOGE("failed to connect fw");
         writeMSG(outFd, "Failed", 6);
     }
